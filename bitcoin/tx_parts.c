@@ -181,29 +181,48 @@ static struct wally_tx_input *fromwire_wally_tx_input(const tal_t *ctx,
 		blinding_nonce = fromwire_tal_arrn(tmpctx,
 						   cursor, max,
 						   fromwire_u32(cursor, max));
+
+		/* libwally doesn't like non-NULL ptrs with zero lengths. */
+		if (tal_bytelen(blinding_nonce) == 0)
+			blinding_nonce = tal_free(blinding_nonce);
+
 		entropy = fromwire_tal_arrn(tmpctx,
 					    cursor, max,
 					    fromwire_u32(cursor, max));
+		if (tal_bytelen(entropy) == 0)
+			entropy = tal_free(entropy);
+
 		issuance_amount = fromwire_tal_arrn(tmpctx,
 						    cursor, max,
 						    fromwire_u32(cursor, max));
+		if (tal_bytelen(issuance_amount) == 0)
+			issuance_amount = tal_free(issuance_amount);
+
 		inflation_keys = fromwire_tal_arrn(tmpctx,
 						   cursor, max,
 						   fromwire_u32(cursor, max));
+		if (tal_bytelen(inflation_keys) == 0)
+			inflation_keys = tal_free(inflation_keys);
+
 		issuance_amount_rangeproof = fromwire_tal_arrn(tmpctx,
 						   cursor, max,
 						   fromwire_u32(cursor, max));
+		if (tal_bytelen(issuance_amount_rangeproof) == 0)
+			issuance_amount_rangeproof = tal_free(issuance_amount_rangeproof);
+
 		inflation_keys_rangeproof = fromwire_tal_arrn(tmpctx,
 						   cursor, max,
 						   fromwire_u32(cursor, max));
+		if (tal_bytelen(inflation_keys_rangeproof) == 0)
+			inflation_keys_rangeproof = tal_free(inflation_keys_rangeproof);
+
 		pegin_witness = fromwire_wally_tx_witness_stack(tmpctx,
 								cursor, max);
 		ret = wally_tx_elements_input_init_alloc
 			(txid.shad.sha.u.u8, sizeof(txid.shad.sha.u.u8),
 			 index, sequence,
 			 script, tal_bytelen(script),
-			 ws,
-			 blinding_nonce, tal_bytelen(blinding_nonce),
+			 ws, blinding_nonce, tal_bytelen(blinding_nonce),
 			 entropy, tal_bytelen(entropy),
 			 issuance_amount, tal_bytelen(issuance_amount),
 			 inflation_keys, tal_bytelen(inflation_keys),
@@ -237,27 +256,46 @@ static struct wally_tx_output *fromwire_wally_tx_output(const tal_t *ctx,
 	unsigned char *script;
 	int ret;
 
+	/* libwally doesn't like non-NULL ptrs with zero lengths. */
 	script = fromwire_tal_arrn(tmpctx,
 				   cursor, max, fromwire_u32(cursor, max));
+	if (tal_bytelen(script) == 0)
+		script = tal_free(script);
 
 	if (is_elements(chainparams)) {
 		u8 *asset, *value, *nonce, *surjectionproof, *rangeproof;
 
+		/* libwally doesn't like non-NULL ptrs with zero lengths. */
 		asset = fromwire_tal_arrn(tmpctx,
 					  cursor, max,
 					  fromwire_u32(cursor, max));
+		if (tal_bytelen(asset) == 0)
+			asset = tal_free(asset);
+
 		value = fromwire_tal_arrn(tmpctx,
 					  cursor, max,
 					  fromwire_u32(cursor, max));
+		if (tal_bytelen(value) == 0)
+			value = tal_free(value);
+
 		nonce = fromwire_tal_arrn(tmpctx,
 					  cursor, max,
 					  fromwire_u32(cursor, max));
+		if (tal_bytelen(nonce) == 0)
+			nonce = tal_free(nonce);
+
 		surjectionproof = fromwire_tal_arrn(tmpctx,
 						    cursor, max,
 						    fromwire_u32(cursor, max));
+		if (tal_bytelen(surjectionproof) == 0)
+			surjectionproof = tal_free(surjectionproof);
+
 		rangeproof = fromwire_tal_arrn(tmpctx,
 					       cursor, max,
 					       fromwire_u32(cursor, max));
+		if (tal_bytelen(rangeproof) == 0)
+			rangeproof = tal_free(rangeproof);
+
 		ret = wally_tx_elements_output_init_alloc
 			(script, tal_bytelen(script),
 			 asset, tal_bytelen(asset),
