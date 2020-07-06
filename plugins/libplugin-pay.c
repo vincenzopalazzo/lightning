@@ -358,7 +358,6 @@ static struct command_result *payment_getroute_result(struct command *cmd,
 {
 	const jsmntok_t *rtok = json_get_member(buffer, toks, "route");
 	struct amount_msat fee;
-	const char *reason;
 	assert(rtok != NULL);
 	p->route = tal_route_from_json(p, buffer, rtok);
 	p->step = PAYMENT_STEP_GOT_ROUTE;
@@ -367,25 +366,19 @@ static struct command_result *payment_getroute_result(struct command *cmd,
 
 	/* Ensure that our fee and CLTV budgets are respected. */
 	if (amount_msat_greater(fee, p->constraints.fee_budget)) {
-		reason = tal_fmt(
-		    NULL,
-		    "Fee exceeds our fee budget: %s > %s, discarding route",
+		payment_exclude_most_expensive(p);
+		payment_fail(
+		    p, "Fee exceeds our fee budget: %s > %s, discarding route",
 		    type_to_string(tmpctx, struct amount_msat, &fee),
 		    type_to_string(tmpctx, struct amount_msat,
 				   &p->constraints.fee_budget));
-		plugin_log(p->plugin, LOG_INFORM, "%s", reason);
-		payment_exclude_most_expensive(p);
-		payment_fail(p, "%s", reason);
 		return command_still_pending(cmd);
 	}
 
 	if (p->route[0].delay > p->constraints.cltv_budget) {
-		reason =
-		    tal_fmt(NULL, "CLTV delay exceeds our CLTV budget: %d > %d",
-			    p->route[0].delay, p->constraints.cltv_budget);
-		plugin_log(p->plugin, LOG_INFORM, "%s", reason);
 		payment_exclude_longest_delay(p);
-		payment_fail(p, "%s", reason);
+		payment_fail(p, "CLTV delay exceeds our CLTV budget: %d > %d",
+			     p->route[0].delay, p->constraints.cltv_budget);
 		return command_still_pending(cmd);
 	}
 
