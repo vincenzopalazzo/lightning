@@ -1229,7 +1229,7 @@ void payment_fail(struct payment *p, const char *fmt, ...)
 	p->end_time = time_now();
 	payment_set_step(p, PAYMENT_STEP_FAILED);
 	va_start(ap, fmt);
-	p->failreason = tal_fmt(p, fmt, ap);
+	p->failreason = tal_vfmt(p, fmt, ap);
 	va_end(ap);
 
 	plugin_log(p->plugin, LOG_INFORM, "%s", p->failreason);
