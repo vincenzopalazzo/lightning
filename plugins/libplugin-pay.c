@@ -1294,6 +1294,9 @@ void payment_fail(struct payment *p, const char *fmt, ...)
 	va_start(ap, fmt);
 	p->failreason = tal_fmt(p, fmt, ap);
 	va_end(ap);
+
+	plugin_log(p->plugin, LOG_INFORM, "%s", p->failreason);
+
 	payment_continue(p);
 }
 
