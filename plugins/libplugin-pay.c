@@ -78,14 +78,9 @@ static struct command_result *payment_rpc_failure(struct command *cmd,
 						  const jsmntok_t *toks,
 						  struct payment *p)
 {
-	const char *reason;
-	reason = tal_fmt(
-	    NULL, "Failing a partial payment due to a failed RPC call: %.*s",
-	    toks->end - toks->start, buffer + toks->start);
-
-	plugin_log(p->plugin, LOG_DBG, "%s", reason);
-
-	payment_fail(p, "%s", reason);
+	payment_fail(p,
+		     "Failing a partial payment due to a failed RPC call: %.*s",
+		     toks->end - toks->start, buffer + toks->start);
 	return command_still_pending(cmd);
 }
 
