@@ -1342,6 +1342,7 @@ static inline void retry_step_cb(struct retry_mod_data *rd,
 		    "%s/%d",
 		    type_to_string(tmpctx, struct sha256, p->payment_hash),
 		    p->partid);
+		p->result->code = PAY_STOPPED_RETRYING;
 		return payment_continue(p);
 	}
 
@@ -1365,6 +1366,8 @@ static inline void retry_step_cb(struct retry_mod_data *rd,
 		subpayment->why =
 		    tal_fmt(subpayment, "Still have %d attempts left",
 			    rdata->retries - 1);
+	} else {
+		p->result->code = PAY_STOPPED_RETRYING;
 	}
 
 	payment_continue(p);
