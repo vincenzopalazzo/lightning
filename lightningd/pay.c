@@ -291,6 +291,7 @@ static void tell_waiters_success(struct lightningd *ld,
 	notify_sendpay_success(ld, payment);
 }
 
+//TODO(vincenzopalazzo) this method store the value inside DB
 void payment_succeeded(struct lightningd *ld, struct htlc_out *hout,
 		       const struct preimage *rval)
 {
@@ -303,6 +304,8 @@ void payment_succeeded(struct lightningd *ld, struct htlc_out *hout,
 					 &hout->payment_hash,
 					 hout->partid);
 	assert(payment);
+	//FIXME: is possible only for keysend plugin but appened also with the pay plugin
+	//assert(payment->bolt11);
 
 	tell_waiters_success(ld, &hout->payment_hash, payment);
 }
@@ -993,6 +996,8 @@ send_payment_core(struct lightningd *ld,
 	else
 		payment->bolt11 = NULL;
 
+	//vincenzopalazzo add this log
+	log_info(ld->log, "Bolt inside send_payment_core: %s", b11str);
 	/* We write this into db when HTLC is actually sent. */
 	wallet_payment_setup(ld->wallet, payment);
 
@@ -1090,6 +1095,8 @@ send_payment(struct lightningd *ld,
 		 type_to_string(tmpctx, struct amount_msat, &route[0].amount),
 		 n_hops, type_to_string(tmpctx, struct amount_msat, &msat));
 	packet = create_onionpacket(tmpctx, path, &path_secrets);
+	//vincenzopalazzo add this log
+	log_info(ld->log, "Bolt inside send_payment: %s", b11str);
 	return send_payment_core(ld, cmd, rhash, partid, &route[0],
 				 msat, total_msat, label, b11str,
 				 packet, &ids[n_hops - 1], ids,
@@ -1182,6 +1189,7 @@ static struct command_result *json_sendonion(struct command *cmd,
 	enum onion_type failcode;
 	struct route_hop *first_hop;
 	struct sha256 *payment_hash;
+	const char *bolt11str;
 	struct lightningd *ld = cmd->ld;
 	const char *label;
 	struct secret *path_secrets;
@@ -1192,6 +1200,7 @@ static struct command_result *json_sendonion(struct command *cmd,
 		   p_req("first_hop", param_route_hop, &first_hop),
 		   p_req("payment_hash", param_sha256, &payment_hash),
 		   p_opt("label", param_escaped_string, &label),
+		   p_opt("bolt11", param_string, &bolt11str),
 		   p_opt("shared_secrets", param_secrets_array, &path_secrets),
 		   p_opt_def("partid", param_u64, &partid, 0),
 		   NULL))
@@ -1207,7 +1216,7 @@ static struct command_result *json_sendonion(struct command *cmd,
 
 	return send_payment_core(ld, cmd, payment_hash, *partid,
 				 first_hop, AMOUNT_MSAT(0), AMOUNT_MSAT(0),
-				 label, NULL, &packet, NULL, NULL, NULL,
+				 label, bolt11str, &packet, NULL, NULL, NULL,
 				 path_secrets);
 }
 

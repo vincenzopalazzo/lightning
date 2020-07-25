@@ -43,6 +43,7 @@ struct payment *payment_new(tal_t *ctx, struct command *cmd,
 
 		p->invoice = parent->invoice;
 	} else {
+		//The invoice if the parent is null? how will set the new invoice?
 		assert(cmd != NULL);
 		p->partid = 0;
 		p->next_partid = 1;
@@ -164,6 +165,9 @@ void payment_start(struct payment *p)
 	 * before we actually call `getroute` */
 	p->getroute->destination = p->destination;
 	p->getroute->max_hops = ROUTING_MAX_HOPS;
+	//FIXME(vincenzopalazzo): Payment send have bolt11 == NULL
+	assert(root->bolt11);
+	//assert(root->invoice != NULL && "bolt11 null");
 	if (root->invoice != NULL && root->invoice->min_final_cltv_expiry != 0)
 		p->getroute->cltv = root->invoice->min_final_cltv_expiry;
 	else
@@ -1014,7 +1018,8 @@ static struct command_result *payment_createonion_success(struct command *cmd,
 	json_add_num(req->js, "delay", first->delay);
 	json_add_node_id(req->js, "id", &first->nodeid);
 	json_object_end(req->js);
-
+	//FIXME(vincenzopalazzo): add bolt11 method
+	json_add_string(req->js, "bolt11", p->bolt11);
 	json_add_sha256(req->js, "payment_hash", p->payment_hash);
 
 	json_array_start(req->js, "shared_secrets");
@@ -1270,7 +1275,7 @@ static void payment_finished(struct payment *p)
 	struct json_stream *ret;
 	struct command *cmd = p->cmd;
 	const char *msg;
-
+	//TODO  vincenzopalazzo method candidate
 	/* Either none of the leaf attempts succeeded yet, or we have a
 	 * preimage. */
 	assert((result.leafstates & PAYMENT_STEP_SUCCESS) == 0 ||
@@ -1294,6 +1299,9 @@ static void payment_finished(struct payment *p)
 			json_add_sha256(ret, "payment_hash", p->payment_hash);
 			json_add_timeabs(ret, "created_at", p->start_time);
 			json_add_num(ret, "parts", result.attempts);
+			//FIXME: add from vincent
+			assert(p->bolt11);
+			json_add_string(ret, "bolt11_debug", p->bolt11);
 
 			json_add_amount_msat_compat(ret, p->amount, "msatoshi",
 						    "amount_msat");
@@ -1416,7 +1424,7 @@ void payment_continue(struct payment *p)
 	 * them, otherwise we can continue with the payment state-machine. */
 	p->current_modifier++;
 	mod = p->modifiers[p->current_modifier];
-
+	assert(p->bolt11 != NULL);
 	if (mod != NULL) {
 		/* There is another modifier, so call it. */
 		moddata = p->modifier_data[p->current_modifier];

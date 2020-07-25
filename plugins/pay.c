@@ -581,6 +581,9 @@ static struct command_result *sendpay_done(struct command *cmd,
 						    waitsendpay_done,
 						    waitsendpay_error, pc);
 	json_add_string(req->js, "payment_hash", pc->payment_hash);
+	if(pc->ps->bolt11){
+		json_add_string(req->js, "bolt11", pc->ps->bolt11);
+	}
 
 	return send_outreq(cmd->plugin, req);
 }
@@ -847,6 +850,7 @@ static struct command_result *getroute_done(struct command *cmd,
 				    sendpay_done, sendpay_error, pc);
 	json_add_jsonstr(req->js, "route", attempt->route);
 	json_add_string(req->js, "payment_hash", pc->payment_hash);
+	assert(pc->ps->bolt11 != NULL);
 	json_add_string(req->js, "bolt11", pc->ps->bolt11);
 	if (pc->label)
 		json_add_string(req->js, "label", pc->label);
@@ -1487,7 +1491,7 @@ static void json_add_sendpay_result(struct json_stream *s, const struct payment_
 	} else {
 		/* This is a success */
 		json_add_u32(s, "id", r->id);
-		json_add_preimage(s, "payment_preimage", r->payment_preimage);
+        json_add_preimage(s, "payment_preimage", r->payment_preimage);
 	}
 
 }
@@ -1745,8 +1749,8 @@ static struct command_result *listsendpays_done(struct command *cmd,
 
 		b11tok = json_get_member(buf, t, "bolt11");
 		hashtok = json_get_member(buf, t, "payment_hash");
-		//assert(b11tok != NULL); //TODO(vincenzopalazzo) I added this command
-        assert(hashtok != NULL);
+		//assert(b11tok != NULL && "bolt11 nulled"); //TODO(vincenzopalazzo) I added this command
+        	assert(hashtok != NULL);
 
 		json_to_sha256(buf, hashtok, &payment_hash);
 		if (b11tok)
@@ -1942,6 +1946,9 @@ static struct command_result *json_paymod(struct command *cmd,
 				: NULL;
 	p->invoice = tal_steal(p, b11);
 	p->bolt11 = tal_steal(p, b11str);
+	//TODO added from vincenzopalazzo
+	assert(p->invoice != NULL && "bolt11 null");
+	assert(p->bolt11 != NULL && "bolt11 null");
 	p->why = "Initial attempt";
 	p->constraints.cltv_budget = *maxdelay;
 	p->deadline = timeabs_add(time_now(), time_from_sec(*retryfor));
@@ -1967,7 +1974,7 @@ static struct command_result *json_paymod(struct command *cmd,
 	shadow_route->use_shadow = *use_shadow;
 #endif
 	p->label = tal_steal(p, label);
-	payment_start(p);
+	payment_start(p); //TODO vicnenzopalazzo payment start entry point
 	list_add_tail(&payments, &p->list);
 
 	return command_still_pending(cmd);

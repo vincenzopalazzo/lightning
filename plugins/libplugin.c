@@ -212,6 +212,8 @@ static struct command_result *command_complete(struct command *cmd,
 	/* Global object */
 	json_object_compat_end(result);
 	json_stream_close(result, cmd);
+	plugin_log(cmd->plugin, LOG_UNUSUAL,
+		"command_complete for plugin with json request");
 	ld_send(cmd->plugin, result);
 	tal_free(cmd);
 
