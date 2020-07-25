@@ -1025,6 +1025,9 @@ static struct command_result *payment_createonion_success(struct command *cmd,
 
 	json_add_num(req->js, "partid", p->partid);
 
+	if(p->bolt11)
+		json_add_string(req->js, "bolt11", p->bolt11);
+
 	if (p->label)
 		json_add_string(req->js, "label", p->label);
 

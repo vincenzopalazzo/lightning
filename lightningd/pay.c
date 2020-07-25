@@ -1183,6 +1183,7 @@ static struct command_result *json_sendonion(struct command *cmd,
 	struct route_hop *first_hop;
 	struct sha256 *payment_hash;
 	struct lightningd *ld = cmd->ld;
+    	const char *bolt11str;
 	const char *label;
 	struct secret *path_secrets;
 	u64 *partid;
@@ -1191,6 +1192,7 @@ static struct command_result *json_sendonion(struct command *cmd,
 		   p_req("onion", param_bin_from_hex, &onion),
 		   p_req("first_hop", param_route_hop, &first_hop),
 		   p_req("payment_hash", param_sha256, &payment_hash),
+           	   p_opt("bolt11", param_string, &bolt11str),
 		   p_opt("label", param_escaped_string, &label),
 		   p_opt("shared_secrets", param_secrets_array, &path_secrets),
 		   p_opt_def("partid", param_u64, &partid, 0),
@@ -1207,7 +1209,7 @@ static struct command_result *json_sendonion(struct command *cmd,
 
 	return send_payment_core(ld, cmd, payment_hash, *partid,
 				 first_hop, AMOUNT_MSAT(0), AMOUNT_MSAT(0),
-				 label, NULL, &packet, NULL, NULL, NULL,
+				 label, bolt11str, &packet, NULL, NULL, NULL,
 				 path_secrets);
 }
 
