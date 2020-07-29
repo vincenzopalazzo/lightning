@@ -1733,7 +1733,11 @@ static void add_new_entry(struct json_stream *ret,
 			  const struct pay_mpp *pm)
 {
 	json_object_start(ret, NULL);
-	json_add_string(ret, "bolt11", pm->b11);
+	if(pm->b11){
+		json_add_string(ret, "bolt11", pm->b11);
+	}else{
+		json_add_sha256(ret, "payment_hash", pm->payment_hash);
+	}
 	json_add_string(ret, "status", pm->status);
 	if (pm->label)
 		json_add_tok(ret, "label", pm->label, buf);
@@ -1844,11 +1848,13 @@ static struct command_result *json_listpays(struct command *cmd,
 					    const jsmntok_t *params)
 {
 	const char *b11str;
+	struct sha256 *payment_hash;
 	struct out_req *req;
 
 	/* FIXME: would be nice to parse as a bolt11 so check worked in future */
 	if (!param(cmd, buf, params,
 		   p_opt("bolt11", param_string, &b11str),
+		   p_opt("payment_hash", param_sha256, &payment_hash),
 		   NULL))
 		return command_param_failed();
 
@@ -1857,6 +1863,9 @@ static struct command_result *json_listpays(struct command *cmd,
 				    cast_const(char *, b11str));
 	if (b11str)
 		json_add_string(req->js, "bolt11", b11str);
+
+	if(payment_hash)
+		json_add_sha256(req->js, "payment_hash", payment_hash);
 	return send_outreq(cmd->plugin, req);
 }
 
@@ -2028,7 +2037,7 @@ static const struct plugin_command commands[] = {
 	}, {
 		"listpays",
 		"payment",
-		"List result of payment {bolt11}, or all",
+		"List result of payment {bolt11} or {payment_hash}, or all",
 		"Covers old payments (failed and succeeded) and current ones.",
 		json_listpays
 	},
