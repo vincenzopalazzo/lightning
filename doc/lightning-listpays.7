@@ -23,7 +23,7 @@ the \fIbolt11\fR argument given to \fIpay\fR (see below for exceptions)\.
 
 .IP \[bu]
 
-\fIpayment_hash\fR: (is the payment was did with the keysend command)
+\fIpayment_hash\fR:
 the \fIpayment_hash\fR argument givent to \fIkeysend\fR
 
 
@@ -54,23 +54,23 @@ total amount sent, in "NNNmsat" format\.
 
 .RE
 
-~For old payments (pre-0\.7) we didn’t save the \fIbolt11\fR string, so in its
-place are three other fields:~
+For old payments (pre-0\.7) we didn’t save the \fIbolt11\fR string, so in its
+place are three other fields:
 
 
-~\fIpayment_hash\fR
-the hash of the \fIpayment_preimage\fR which will prove payment\.~
+\fIpayment_hash\fR
+the hash of the \fIpayment_preimage\fR which will prove payment\.
 
 
-~\fIdestination\fR
-the final destination of the payment\.~
+\fIdestination\fR
+the final destination of the payment\.
 
 
-~\fIamount_msat\fR
-the amount the destination received, in "NNNmsat" format\.~
+\fIamount_msat\fR
+the amount the destination received, in "NNNmsat" format\.
 
 
-~These three can all be extracted from \fIbolt11\fR, hence are obsolete\.~
+These three can all be extracted from \fIbolt11\fR, hence are obsolete\.
 
 .SH AUTHOR
 

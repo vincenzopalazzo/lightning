@@ -1733,11 +1733,10 @@ static void add_new_entry(struct json_stream *ret,
 			  const struct pay_mpp *pm)
 {
 	json_object_start(ret, NULL);
-	if(pm->b11){
+	if (pm->b11)
 		json_add_string(ret, "bolt11", pm->b11);
-	}else{
-		json_add_sha256(ret, "payment_hash", pm->payment_hash);
-	}
+
+	json_add_sha256(ret, "payment_hash", pm->payment_hash);
 	json_add_string(ret, "status", pm->status);
 	if (pm->label)
 		json_add_tok(ret, "label", pm->label, buf);

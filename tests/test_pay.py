@@ -3223,7 +3223,7 @@ def test_bolt11_null_after_pay(node_factory, bitcoind):
     assert('amount_msat' in pays[0] and pays[0]['amount_msat'] == amt)
 
 
-def test_listpay_resutl_with_paymod(node_factory, bitcoind):
+def test_listpay_result_with_paymod(node_factory, bitcoind):
     """
     The object of this test is to verify the correct behavior
     of the RPC command listpay e with two different type of
@@ -3243,5 +3243,5 @@ def test_listpay_resutl_with_paymod(node_factory, bitcoind):
 
     assert 'bolt11' in l1.rpc.listpays()['pays'][0]
     assert 'payment_hash' in l2.rpc.listpays()['pays'][0]
-    assert 'payment_hash' not in l1.rpc.listpays()['pays'][0]
+    assert 'payment_hash' in l1.rpc.listpays()['pays'][0]
     assert 'bolt11' not in l2.rpc.listpays()['pays'][0]

@@ -20,7 +20,7 @@ On success, an array of objects is returned. Each object contains:
 - *bolt11*: (if the payment was did with pay command)
 the *bolt11* argument given to *pay* (see below for exceptions).
 
-- *payment_hash*: (is the payment was did with the keysend command)
+- *payment_hash*:
 the *payment_hash* argument givent to *keysend*
 
 - *status*:
@@ -35,20 +35,20 @@ optional *label*, if provided to *pay*.
 - *amount\_sent\_msat*:
 total amount sent, in "NNNmsat" format.
 
-~For old payments (pre-0.7) we didn’t save the *bolt11* string, so in its
-place are three other fields:~
+For old payments (pre-0.7) we didn’t save the *bolt11* string, so in its
+place are three other fields:
 
 
-~*payment\_hash*
-the hash of the *payment\_preimage* which will prove payment.~
+*payment\_hash*
+the hash of the *payment\_preimage* which will prove payment.
 
-~*destination*
-the final destination of the payment.~
+*destination*
+the final destination of the payment.
 
-~*amount\_msat*
-the amount the destination received, in "NNNmsat" format.~
+*amount\_msat*
+the amount the destination received, in "NNNmsat" format.
 
-~These three can all be extracted from *bolt11*, hence are obsolete.~
+These three can all be extracted from *bolt11*, hence are obsolete.
 
 AUTHOR
 ------
