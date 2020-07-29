@@ -3,55 +3,74 @@
 lightning-listpays - Command for querying payment status
 .SH SYNOPSIS
 
-\fBlistpays\fR [bolt11]
+\fBlistpays\fR [bolt11] [payment_hash]
 
 .SH DESCRIPTION
 
 The \fBlistpay\fR RPC command gets the status of all \fIpay\fR commands, or a
-single one if \fIbolt11\fR is specified\.
+single one if \fIbolt11\fR or \fIpayment_hash\fR are specified (no both)\.
 
 .SH RETURN VALUE
 
 On success, an array of objects is returned\. Each object contains:
 
+.RS
+.IP \[bu]
 
- \fIbolt11\fR
+\fIbolt11\fR: (if the payment was did with pay command)
 the \fIbolt11\fR argument given to \fIpay\fR (see below for exceptions)\.
 
 
- \fIstatus\fR
+.IP \[bu]
+
+\fIpayment_hash\fR: (is the payment was did with the keysend command)
+the \fIpayment_hash\fR argument givent to \fIkeysend\fR
+
+
+.IP \[bu]
+
+\fIstatus\fR:
 one of \fIcomplete\fR, \fIfailed\fR or \fIpending\fR\.
 
 
- \fIpayment_preimage\fR
+.IP \[bu]
+
+\fIpayment_preimage\fR:
 (if \fIstatus\fR is \fIcomplete\fR) proves payment was received\.
 
 
- \fIlabel\fR
+.IP \[bu]
+
+\fIlabel\fR:
 optional \fIlabel\fR, if provided to \fIpay\fR\.
 
 
- \fIamount_sent_msat\fR
+.IP \[bu]
+
+\fIamount_sent_msat\fR:
 total amount sent, in "NNNmsat" format\.
 
 
-For old payments (pre-0\.7) we didn’t save the \fIbolt11\fR string, so in its
-place are three other fields:
+
+.RE
+
+~For old payments (pre-0\.7) we didn’t save the \fIbolt11\fR string, so in its
+place are three other fields:~
 
 
- \fIpayment_hash\fR
-the hash of the \fIpayment_preimage\fR which will prove payment\.
+~\fIpayment_hash\fR
+the hash of the \fIpayment_preimage\fR which will prove payment\.~
 
 
- \fIdestination\fR
-the final destination of the payment\.
+~\fIdestination\fR
+the final destination of the payment\.~
 
 
- \fIamount_msat\fR
-the amount the destination received, in "NNNmsat" format\.
+~\fIamount_msat\fR
+the amount the destination received, in "NNNmsat" format\.~
 
 
-These three can all be extracted from \fIbolt11\fR, hence are obsolete\.
+~These three can all be extracted from \fIbolt11\fR, hence are obsolete\.~
 
 .SH AUTHOR
 

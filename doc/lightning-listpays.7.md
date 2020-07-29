@@ -4,47 +4,51 @@ lightning-listpays -- Command for querying payment status
 SYNOPSIS
 --------
 
-**listpays** \[bolt11\]
+**listpays** \[bolt11\] \[payment_hash\]
 
 DESCRIPTION
 -----------
 
 The **listpay** RPC command gets the status of all *pay* commands, or a
-single one if *bolt11* is specified.
+single one if *bolt11* or *payment_hash* are specified (no both).
 
 RETURN VALUE
 ------------
 
 On success, an array of objects is returned. Each object contains:
 
- *bolt11*
+- *bolt11*: (if the payment was did with pay command)
 the *bolt11* argument given to *pay* (see below for exceptions).
 
- *status*
+- *payment_hash*: (is the payment was did with the keysend command)
+the *payment_hash* argument givent to *keysend*
+
+- *status*:
 one of *complete*, *failed* or *pending*.
 
- *payment\_preimage*
+- *payment\_preimage*:
 (if *status* is *complete*) proves payment was received.
 
- *label*
+- *label*:
 optional *label*, if provided to *pay*.
 
- *amount\_sent\_msat*
+- *amount\_sent\_msat*:
 total amount sent, in "NNNmsat" format.
 
-For old payments (pre-0.7) we didn’t save the *bolt11* string, so in its
-place are three other fields:
+~For old payments (pre-0.7) we didn’t save the *bolt11* string, so in its
+place are three other fields:~
 
- *payment\_hash*
-the hash of the *payment\_preimage* which will prove payment.
 
- *destination*
-the final destination of the payment.
+~*payment\_hash*
+the hash of the *payment\_preimage* which will prove payment.~
 
- *amount\_msat*
-the amount the destination received, in "NNNmsat" format.
+~*destination*
+the final destination of the payment.~
 
-These three can all be extracted from *bolt11*, hence are obsolete.
+~*amount\_msat*
+the amount the destination received, in "NNNmsat" format.~
+
+~These three can all be extracted from *bolt11*, hence are obsolete.~
 
 AUTHOR
 ------
