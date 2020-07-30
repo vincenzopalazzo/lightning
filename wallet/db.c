@@ -5,26 +5,40 @@
 #include <ccan/array_size/array_size.h>
 #include <ccan/tal/str/str.h>
 #include <common/derive_basepoints.h>
+#include <common/key_derive.h>
 #include <common/node_id.h>
 #include <common/onionreply.h>
 #include <common/version.h>
+#include <hsmd/gen_hsm_wire.h>
 #include <inttypes.h>
 #include <lightningd/channel.h>
 #include <lightningd/lightningd.h>
 #include <lightningd/log.h>
 #include <lightningd/plugin_hook.h>
 #include <wallet/db_common.h>
+#include <wallet/wallet.h>
+#include <wally_bip32.h>
+#include <wire/wire_sync.h>
 
 #define NSEC_IN_SEC 1000000000
 
 struct migration {
 	const char *sql;
-	void (*func)(struct lightningd *ld, struct db *db);
+	void (*func)(struct lightningd *ld, struct db *db,
+		     const struct ext_key *bip32_base);
 };
 
-static void migrate_pr2342_feerate_per_channel(struct lightningd *ld, struct db *db);
+static void migrate_pr2342_feerate_per_channel(struct lightningd *ld, struct db *db,
+					       const struct ext_key *bip32_base);
 
-static void migrate_our_funding(struct lightningd *ld, struct db *db);
+static void migrate_our_funding(struct lightningd *ld, struct db *db,
+				const struct ext_key *bip32_base);
+
+static void migrate_last_tx_to_psbt(struct lightningd *ld, struct db *db,
+				    const struct ext_key *bip32_base);
+
+static void fillin_missing_scriptpubkeys(struct lightningd *ld, struct db *db,
+					 const struct ext_key *bip32_base);
 
 /* Do not reorder or remove elements from this array, it is used to
  * migrate existing databases from a previous state, based on the
@@ -618,6 +632,7 @@ static struct migration dbmigrations[] = {
     {SQL("INSERT INTO vars (name, intval) VALUES ('coin_moves_count', 0);"), NULL},
     {NULL, migrate_last_tx_to_psbt},
     {SQL("ALTER TABLE outputs ADD reserved_til INTEGER DEFAULT NULL;"), NULL},
+    {NULL, fillin_missing_scriptpubkeys},
 };
 
 /* Leak tracking. */
@@ -970,7 +985,8 @@ static int db_get_version(struct db *db)
 /**
  * db_migrate - Apply all remaining migrations from the current version
  */
-static void db_migrate(struct lightningd *ld, struct db *db)
+static void db_migrate(struct lightningd *ld, struct db *db,
+		       const struct ext_key *bip32_base)
 {
 	/* Attempt to read the version from the database */
 	int current, orig, available;
@@ -997,7 +1013,7 @@ static void db_migrate(struct lightningd *ld, struct db *db)
 			tal_free(stmt);
 		}
 		if (dbmigrations[current].func)
-			dbmigrations[current].func(ld, db);
+			dbmigrations[current].func(ld, db, bip32_base);
 	}
 
 	/* Finally update the version number in the version table */
@@ -1029,14 +1045,15 @@ u32 db_data_version_get(struct db *db)
 	return version;
 }
 
-struct db *db_setup(const tal_t *ctx, struct lightningd *ld)
+struct db *db_setup(const tal_t *ctx, struct lightningd *ld,
+		    const struct ext_key *bip32_base)
 {
 	struct db *db = db_open(ctx, ld->wallet_dsn);
 	db->log = new_log(db, ld->log_book, NULL, "database");
 
 	db_begin_transaction(db);
 
-	db_migrate(ld, db);
+	db_migrate(ld, db, bip32_base);
 
 	db->data_version = db_data_version_get(db);
 	db_commit_transaction(db);
@@ -1082,7 +1099,8 @@ void db_set_intvar(struct db *db, char *varname, s64 val)
 }
 
 /* Will apply the current config fee settings to all channels */
-static void migrate_pr2342_feerate_per_channel(struct lightningd *ld, struct db *db)
+static void migrate_pr2342_feerate_per_channel(struct lightningd *ld, struct db *db,
+					       const struct ext_key *bip32_base)
 {
 	struct db_stmt *stmt = db_prepare_v2(
 	    db, SQL("UPDATE channels SET feerate_base = ?, feerate_ppm = ?;"));
@@ -1100,7 +1118,8 @@ static void migrate_pr2342_feerate_per_channel(struct lightningd *ld, struct db 
  * is the same as the funding_satoshi for every channel where we are
  * the `funder`
  */
-static void migrate_our_funding(struct lightningd *ld, struct db *db)
+static void migrate_our_funding(struct lightningd *ld, struct db *db,
+				const struct ext_key *bip32_base)
 {
 	struct db_stmt *stmt;
 
@@ -1116,12 +1135,94 @@ static void migrate_our_funding(struct lightningd *ld, struct db *db)
 	tal_free(stmt);
 }
 
+void fillin_missing_scriptpubkeys(struct lightningd *ld, struct db *db,
+				  const struct ext_key *bip32_base)
+{
+	struct db_stmt *stmt;
+
+	stmt = db_prepare_v2(db, SQL("SELECT"
+				     " type"
+				     ", keyindex"
+				     ", prev_out_tx"
+				     ", prev_out_index"
+				     ", channel_id"
+				     ", peer_id"
+				     ", commitment_point"
+				     " FROM outputs"
+				     " WHERE scriptpubkey IS NULL;"));
+
+	db_query_prepared(stmt);
+	while (db_step(stmt)) {
+		int type;
+		u8 *scriptPubkey;
+		struct bitcoin_txid txid;
+		u32 outnum, keyindex;
+		struct pubkey key;
+		struct db_stmt *update_stmt;
+
+		type = db_column_int(stmt, 0);
+		keyindex = db_column_int(stmt, 1);
+		db_column_txid(stmt, 2, &txid);
+		outnum = db_column_int(stmt, 3);
+
+		/* This indiciates whether or not we have 'close_info' */
+		if (!db_column_is_null(stmt, 4)) {
+			struct pubkey *commitment_point;
+			struct node_id peer_id;
+			u64 channel_id;
+			u8 *msg;
+
+			channel_id = db_column_u64(stmt, 4);
+			db_column_node_id(stmt, 5, &peer_id);
+			if (!db_column_is_null(stmt, 6)) {
+				commitment_point = tal(stmt, struct pubkey);
+				db_column_pubkey(stmt, 6, commitment_point);
+			} else
+				commitment_point = NULL;
+
+			/* Have to go ask the HSM to derive the pubkey for us */
+			msg = towire_hsm_get_output_scriptpubkey(NULL,
+								 channel_id,
+								 &peer_id,
+								 commitment_point);
+			if (!wire_sync_write(ld->hsm_fd, take(msg)))
+				fatal("Could not write to HSM: %s", strerror(errno));
+			msg = wire_sync_read(stmt, ld->hsm_fd);
+			if (!fromwire_hsm_get_output_scriptpubkey_reply(stmt, msg,
+									&scriptPubkey))
+				fatal("HSM gave bad hsm_get_output_scriptpubkey_reply %s",
+				      tal_hex(msg, msg));
+		} else {
+			/* Build from bip32_base */
+			bip32_pubkey(bip32_base, &key, keyindex);
+			if (type == p2sh_wpkh) {
+				u8 *redeemscript = bitcoin_redeem_p2sh_p2wpkh(stmt, &key);
+				scriptPubkey = scriptpubkey_p2sh(tmpctx, redeemscript);
+			} else
+				scriptPubkey = scriptpubkey_p2wpkh(stmt, &key);
+		}
+
+		update_stmt = db_prepare_v2(db, SQL("UPDATE outputs"
+						    " SET scriptpubkey = ?"
+						    " WHERE prev_out_tx = ? "
+						    "   AND prev_out_index = ?"));
+		db_bind_blob(update_stmt, 0, scriptPubkey, tal_bytelen(scriptPubkey));
+		db_bind_txid(update_stmt, 1, &txid);
+		db_bind_int(update_stmt, 2, outnum);
+		db_exec_prepared_v2(update_stmt);
+		tal_free(update_stmt);
+	}
+
+	tal_free(stmt);
+}
+
 /* We're moving everything over to PSBTs from tx's, particularly our last_tx's
  * which are commitment transactions for channels.
  * This migration loads all of the last_tx's and 're-formats' them into psbts,
  * adds the required input witness utxo information, and then saves it back to disk
  * */
-void migrate_last_tx_to_psbt(struct lightningd *ld, struct db *db)
+void migrate_last_tx_to_psbt(struct lightningd *ld, struct db *db,
+			     const struct ext_key *bip32_base)
 {
 	struct db_stmt *stmt, *update_stmt;
 
