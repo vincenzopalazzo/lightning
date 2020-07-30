@@ -1003,7 +1003,6 @@ static struct command_result *start_pay_attempt(struct command *cmd,
 	struct pay_attempt *attempt;
 	va_list ap;
 	size_t n;
-
 	n = tal_count(pc->ps->attempts);
 	tal_resize(&pc->ps->attempts, n+1);
 	attempt = &pc->ps->attempts[n];
@@ -1666,6 +1665,13 @@ struct pay_mpp {
 	 * only). Null if we have any part for which we didn't know the
 	 * amount. */
 	struct amount_msat *amount;
+
+	/* TODO(vincenzopalazzo) are working here
+	 *
+	 * This is to introduce the destination inside the listpays result
+	 * This mean to introcude the destination propriety
+	 * */
+	struct node_id *destination;
 };
 
 static const struct sha256 *pay_mpp_key(const struct pay_mpp *pm)
@@ -1735,6 +1741,8 @@ static void add_new_entry(struct json_stream *ret,
 	json_object_start(ret, NULL);
 	if (pm->b11)
 		json_add_string(ret, "bolt11", pm->b11);
+	else if (pm->destination)
+		json_add_node_id(ret, "destination", pm->destination);
 
 	json_add_sha256(ret, "payment_hash", pm->payment_hash);
 	json_add_string(ret, "status", pm->status);
@@ -1780,15 +1788,22 @@ static struct command_result *listsendpays_done(struct command *cmd,
 	ret = jsonrpc_stream_success(cmd);
 	json_array_start(ret, "pays");
 	json_for_each_arr(i, t, arr) {
-		const jsmntok_t *status, *b11tok, *hashtok;
+		const jsmntok_t *status, *b11tok, *hashtok, *destinationtok;
 		const char *b11 = b11str;
 		struct sha256 payment_hash;
+		struct node_id destination;
 
 		b11tok = json_get_member(buf, t, "bolt11");
 		hashtok = json_get_member(buf, t, "payment_hash");
+		destinationtok = json_get_member(buf, t, "destination");
 		assert(hashtok != NULL);
+		//assert(destinationtok != NULL);
 
 		json_to_sha256(buf, hashtok, &payment_hash);
+		if (destinationtok){
+			json_to_node_id(buf, destinationtok, &destination);
+		}
+
 		if (b11tok)
 			b11 = json_strdup(cmd, buf, b11tok);
 
@@ -1803,8 +1818,12 @@ static struct command_result *listsendpays_done(struct command *cmd,
 			pm->amount = talz(pm, struct amount_msat);
 			pm->num_nonfailed_parts = 0;
 			pm->status = NULL;
+			pm->destination = NULL;
 			pay_map_add(&pay_map, pm);
 		}
+
+		if (destinationtok)
+			pm->destination = &destination;
 
 		status = json_get_member(buf, t, "status");
 		if (json_tok_streq(buf, status, "complete")) {
