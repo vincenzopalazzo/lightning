@@ -1666,11 +1666,6 @@ struct pay_mpp {
 	 * amount. */
 	struct amount_msat *amount;
 
-	/* TODO(vincenzopalazzo) are working here
-	 *
-	 * This is to introduce the destination inside the listpays result
-	 * This mean to introcude the destination propriety
-	 * */
 	struct node_id *destination;
 };
 
@@ -1797,12 +1792,11 @@ static struct command_result *listsendpays_done(struct command *cmd,
 		hashtok = json_get_member(buf, t, "payment_hash");
 		destinationtok = json_get_member(buf, t, "destination");
 		assert(hashtok != NULL);
-		//assert(destinationtok != NULL);
 
 		json_to_sha256(buf, hashtok, &payment_hash);
-		if (destinationtok){
+
+		if (destinationtok)
 			json_to_node_id(buf, destinationtok, &destination);
-		}
 
 		if (b11tok)
 			b11 = json_strdup(cmd, buf, b11tok);
