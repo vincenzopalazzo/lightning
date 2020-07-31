@@ -1666,6 +1666,8 @@ struct pay_mpp {
 	 * only). Null if we have any part for which we didn't know the
 	 * amount. */
 	struct amount_msat *amount;
+
+	struct node_id *destination;
 };
 
 static const struct sha256 *pay_mpp_key(const struct pay_mpp *pm)
@@ -1735,7 +1737,8 @@ static void add_new_entry(struct json_stream *ret,
 	json_object_start(ret, NULL);
 	if (pm->b11)
 		json_add_string(ret, "bolt11", pm->b11);
-
+	else if (pm->destination)
+		json_add_node_id(ret, "destination", pm->destination);
 	json_add_sha256(ret, "payment_hash", pm->payment_hash);
 	json_add_string(ret, "status", pm->status);
 	if (pm->label)
@@ -1780,23 +1783,29 @@ static struct command_result *listsendpays_done(struct command *cmd,
 	ret = jsonrpc_stream_success(cmd);
 	json_array_start(ret, "pays");
 	json_for_each_arr(i, t, arr) {
-		const jsmntok_t *status, *b11tok, *hashtok;
+		const jsmntok_t *status, *b11tok, *hashtok, *destinationtok;
 		const char *b11 = b11str;
 		struct sha256 payment_hash;
+		struct node_id destination;
 
 		b11tok = json_get_member(buf, t, "bolt11");
 		hashtok = json_get_member(buf, t, "payment_hash");
+		destinationtok = json_get_member(buf, t, "destination");
 		assert(hashtok != NULL);
 
 		json_to_sha256(buf, hashtok, &payment_hash);
 		if (b11tok)
 			b11 = json_strdup(cmd, buf, b11tok);
 
+		if (destinationtok)
+			json_to_node_id(buf, destinationtok, &destination);
+
 		pm = pay_map_get(&pay_map, &payment_hash);
 		if (!pm) {
 			pm = tal(cmd, struct pay_mpp);
 			pm->payment_hash = tal_dup(pm, struct sha256, &payment_hash);
 			pm->b11 = tal_steal(pm, b11);
+			pm->destination = tal_dup(pm,struct node_id, &destination);
 			pm->label = json_get_member(buf, t, "label");
 			pm->preimage = NULL;
 			pm->amount_sent = AMOUNT_MSAT(0);
@@ -1865,6 +1874,7 @@ static struct command_result *json_listpays(struct command *cmd,
 
 	if(payment_hash)
 		json_add_sha256(req->js, "payment_hash", payment_hash);
+
 	return send_outreq(cmd->plugin, req);
 }
 
