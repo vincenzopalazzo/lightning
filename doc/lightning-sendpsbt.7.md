@@ -9,7 +9,9 @@ SYNOPSIS
 DESCRIPTION
 -----------
 
-The **sendpsbt** is a low-level RPC command which sent a PSBT using the result of command *fundpsbt*.
+The **sendpsbt** is a low-level RPC command which sent a PSBT.
+
+- *psbt*: A string that rappresent the hexadecimal of the psbt. It is required to run the **sendpsbt** command. The called can build a psbt with a the command *fundpsbt*
 
 EXAMPLE JSON REQUEST
 ------------
@@ -26,14 +28,14 @@ EXAMPLE JSON REQUEST
 RETURN VALUE
 ------------
 
-On success, the tx and txid of the transaction is returned, as well as the channel_id of the newly created channel. On failure, an error is reported and the channel is not funded.
+On success, the tx and txid of the transaction is returned, as well as the channel_id of the newly created channel.
 
-- *txid*: A string that rappresent the hash of transaction whitch can use to find on the blockchain.
+- *txid*: A string that rappresent the hash of transaction which the caller can use to find it on the blockchain.
 - *tx*: A string that rappresent the hexadecimal dump of the transaction.
 
 On failure, one of the following error codes may be returned:
 
-- -32602. Error in given parameters or some error happened during the process.
+- -32602. Error in given parameters or some error happened during the command process.
 
 EXAMPLE JSON RESPONSE
 -----
