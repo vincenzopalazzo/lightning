@@ -3455,3 +3455,26 @@ def test_mpp_waitblockheight_routehint_conflict(node_factory, bitcoind, executor
 
     # pay command should complete without error
     fut.result(TIMEOUT)
+
+
+def test_listpays_payment_split(node_factory, bitcoind):
+    """
+    This test
+    """
+    MPP_TARGET_SIZE = 10**7  # Taken from libpluin-pay.c
+    amt = 5 * MPP_TARGET_SIZE
+
+    l1, l2, l3 = node_factory.line_graph(
+        3, fundamount=10**8, wait_for_announce=True,
+        opts={'wumbo': None}
+    )
+
+    inv = l3.rpc.invoice(amt, 'lbl', 'desc')
+    l1.rpc.pay(inv['bolt11'])
+
+    assert len(l1.rpc.listsendpays()['payments']) == 5
+    assert l1.rpc.listsendpays()['payments'][0]['bolt11'] == inv['bolt11']
+    assert l1.rpc.listsendpays()['payments'][1]['bolt11'] == inv['bolt11']
+    assert l1.rpc.listsendpays()['payments'][2]['bolt11'] == inv['bolt11']
+    assert l1.rpc.listsendpays()['payments'][3]['bolt11'] == inv['bolt11']
+    assert l1.rpc.listsendpays()['payments'][4]['bolt11'] == inv['bolt11']
