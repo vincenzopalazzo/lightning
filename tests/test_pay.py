@@ -3478,3 +3478,8 @@ def test_listpays_payment_split(node_factory, bitcoind):
     assert l1.rpc.listsendpays()['payments'][2]['bolt11'] == inv['bolt11']
     assert l1.rpc.listsendpays()['payments'][3]['bolt11'] == inv['bolt11']
     assert l1.rpc.listsendpays()['payments'][4]['bolt11'] == inv['bolt11']
+    assert l1.rpc.listsendpays()['payments'][0]['label'] == inv['label']
+    assert l1.rpc.listsendpays()['payments'][1]['label'] == inv['label']
+    assert l1.rpc.listsendpays()['payments'][2]['label'] == inv['label']
+    assert l1.rpc.listsendpays()['payments'][3]['label'] == inv['label']
+    assert l1.rpc.listsendpays()['payments'][4]['label'] == inv['label']
