@@ -3272,13 +3272,13 @@ def test_delpay_argument_invalid(node_factory, bitcoind):
     with pytest.raises(RpcError):
         l2.rpc.delpay()
 
-    # invoice unpayed
+    # invoice unpaid
     inv = l1.rpc.invoice(10 ** 5, 'inv', 'inv')
     payment_hash = inv["payment_hash"]
     with pytest.raises(RpcError):
         l2.rpc.delpay(payment_hash)
 
-    # payment unpayed with wrong status (pending status is a illegal input)
+    # payment unpaid with wrong status (pending status is a illegal input)
     with pytest.raises(RpcError):
         l2.rpc.delpay(payment_hash, 'pending')
 
@@ -3311,39 +3311,9 @@ def test_delpay_argument_invalid(node_factory, bitcoind):
     assert len(l2.rpc.listpays()['pays']) == 0
 
 
-def test_delpay(node_factory, bitcoind):
-    """
-    This unit test try to catch some error inside the command
-    delpay when it receives the correct input from the user
-    """
-
-    l1, l2 = node_factory.get_nodes(2)
-
-    amount_sat = 10 ** 6
-
-    # create l2->l1 channel.
-    l2.fundwallet(amount_sat * 5)
-    l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
-    l2.rpc.fundchannel(l1.info['id'], amount_sat * 3)
-
-    # Let the channel confirm.
-    bitcoind.generate_block(6)
-    sync_blockheight(bitcoind, [l1, l2])
-
-    invl1 = l1.rpc.invoice(Millisatoshi(amount_sat * 2 * 1000), "j", "j")
-    l2.rpc.pay(invl1["bolt11"])
-
-    before_del_pay = l2.rpc.listpays()
-
-    l2.rpc.delpay(invl1["payment_hash"])
-
-    after_del_pay = l2.rpc.listpays()["pays"]
-    assert len(after_del_pay) == (len(before_del_pay) - 1)
-
-
 def test_delpay_payment_split(node_factory, bitcoind):
     """
-    This test test the correct bheaivord of the commmand delpay with a mpp
+    Test behavior of delpay with an MPP
     """
     MPP_TARGET_SIZE = 10**7  # Taken from libpluin-pay.c
     amt = 5 * MPP_TARGET_SIZE

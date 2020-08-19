@@ -64,9 +64,11 @@ static const char *payment_status_to_string(const enum wallet_payment_status sta
 		return "complete";
 	case PAYMENT_FAILED:
 		return "failed";
-	default:
+	case PAYMENT_PENDING:
 		return "pending";
 	}
+	//This should never happen
+	abort();
 }
 
 
@@ -1548,8 +1550,7 @@ static struct command_result *json_delpay(struct command *cmd,
 		status_str = "complete";
 
 	if (!string_to_payment_status(status_str, &status))
-		return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
-						"Unrecognized status: %s", status_str);
+		return command_fail(cmd, JSONRPC2_INVALID_PARAMS, "Unrecognized status: %s", status_str);
 
 	if (status == PAYMENT_PENDING)
 		return command_fail(cmd, JSONRPC2_INVALID_PARAMS, "Invalid status: %s",
@@ -1558,17 +1559,15 @@ static struct command_result *json_delpay(struct command *cmd,
 	payments = wallet_payment_list(cmd, cmd->ld->wallet, payment_hash);
 
 	if (tal_count(payments) == 0)
-		return command_fail(cmd, PAY_NO_SUCH_PAYMENT,
-			"Unknown payment with payment_hash: %s",
+		return command_fail(cmd, PAY_NO_SUCH_PAYMENT, "Unknown payment with payment_hash: %s",
 				    type_to_string(tmpctx, struct sha256, payment_hash));
 
 	for (int i = 0; i < tal_count(payments); i++) {
 		if (payments[i]->status != status) {
-			return command_fail(cmd, PAY_STATUS_UNEXPECTED,
-					"Payment with hash %s has %s status but it should be %s",
+			return command_fail(cmd, PAY_STATUS_UNEXPECTED, "Payment with hash %s has %s status but it should be %s",
 					type_to_string(tmpctx, struct sha256, payment_hash),
 					payment_status_to_string(payments[i]->status),
-				        payment_status_to_string(status));
+					payment_status_to_string(status));
 		}
 	}
 
