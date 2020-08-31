@@ -605,6 +605,8 @@ char *plugin_opt_set(const char *arg, struct plugin_opt *popt)
 		if (*popt->value->as_int != l)
 			return tal_fmt(tmpctx, "%s does not parse as type %s (overflowed)",
 				       popt->value->as_str, popt->type);
+		tal_free(popt->value->as_str);
+		popt->value->as_str = NULL;
 	} else if (streq(popt->type, "bool")) {
 		/* valid values are 'true', 'True', '1', '0', 'false', 'False', or '' */
 		if (streq(arg, "true") || streq(arg, "True") || streq(arg, "1")) {
@@ -615,6 +617,8 @@ char *plugin_opt_set(const char *arg, struct plugin_opt *popt)
 		} else
 			return tal_fmt(tmpctx, "%s does not parse as type %s",
 				       popt->value->as_str, popt->type);
+		tal_free(popt->value->as_str);
+		popt->value->as_str = NULL;
 	}
 
 	return NULL;
@@ -699,6 +703,8 @@ static const char *plugin_opt_add(struct plugin *plugin, const char *buffer,
 		return tal_fmt(plugin,
 			       "Only \"string\", \"int\", \"bool\", and \"flag\" options are supported");
 	}
+
+	log_unusual(plugin->log, "*********** Name: %s witht type: %s ************", popt->name, popt->type);
 
 	if (!popt->description)
 		popt->description = json_strdup(popt, buffer, desctok);
@@ -1414,6 +1420,7 @@ plugin_populate_init_request(struct plugin *plugin, struct jsonrpc_request *req)
 		/* Trim the `--` that we added before */
 		name = opt->name + 2;
 		if (opt->value->as_bool) {
+			log_unusual(plugin->log, "********* Option plugin boolean with name %s ********", name);
 			/* We don't include 'flag' types if they're not
 			 * flagged on */
 			if (streq(opt->type, "flag") && !*opt->value->as_bool)
@@ -1422,13 +1429,13 @@ plugin_populate_init_request(struct plugin *plugin, struct jsonrpc_request *req)
 			json_add_bool(req->stream, name, *opt->value->as_bool);
 			if (!deprecated_apis)
 				continue;
-		}
-		if (opt->value->as_int) {
+		}else if (opt->value->as_int) {
+			log_unusual(plugin->log, "************ Option plugin integer with name %s ***********", name);
 			json_add_s64(req->stream, name, *opt->value->as_int);
 			if (!deprecated_apis)
 				continue;
-		}
-		if (opt->value->as_str) {
+		}else if (opt->value->as_str) {
+			log_unusual(plugin->log, "********** Option plugin string with name %s **********", name);
 			json_add_string(req->stream, name, opt->value->as_str);
 		}
 	}
