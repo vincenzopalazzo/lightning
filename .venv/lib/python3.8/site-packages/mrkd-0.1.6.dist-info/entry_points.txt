@@ -1,0 +1,3 @@
+[console_scripts]
+mrkd = mrkd:main
+

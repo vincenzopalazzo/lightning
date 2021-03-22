@@ -1,0 +1,20 @@
+Metadata-Version: 2.1
+Name: mrkd
+Version: 0.1.6
+Summary: Write man pages using Markdown, and convert them to Roff or HTML
+Home-page: https://github.com/kirbyfan64/mrkd
+Author: Ryan Gonzalez
+Author-email: rymg19@gmail.com
+License: BSD
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: License :: OSI Approved :: BSD License
+Requires-Dist: Jinja2
+Requires-Dist: mistune
+Requires-Dist: mistune-contrib
+Requires-Dist: plac
+Requires-Dist: pygments
+
+UNKNOWN
+
+
