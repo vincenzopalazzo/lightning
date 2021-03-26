@@ -4235,3 +4235,41 @@ def test_unreachable_routehint(node_factory, bitcoind):
     # both directly, and via the routehints we should now just have a
     # single attempt.
     assert(len(excinfo.value.error['attempts']) == 1)
+
+def test_pay_unconfirmed(node_factory, bitcoind):
+    l1, l2, l3 = node_factory.line_graph(3, wait_for_announce=True,
+                                         fundamount=10**6)
+
+    # unconfirmed channel l1->l3
+    l1.connect(l3)
+    addr = l1.rpc.newaddr()['bech32']
+    amount = 10**6 * 2
+    bitcoind.rpc.sendtoaddress(addr, (amount + 1000000) / 10**8)
+    bitcoind.generate_block(1)
+
+    # Wait for it to hit wallet
+    wait_for(lambda: len(l1.rpc.listfunds()['outputs']) > 1)
+    res = l1.rpc.fundchannel(l3.info['id'], amount)
+
+    # Various combinations of invoice issuance
+    l1.rpc.invoice(str(10**5) + "sat", 'test1', 'test1')
+    l1.rpc.invoice(str(10**5) + "sat", 'test2', 'test2',
+                   exposeprivatechannels=True)
+
+    # Try paying (will fail, needs that large channel!)
+    inv = l3.rpc.invoice(str(amount // 2) + "sat", 'test', 'test')['bolt11']
+    with pytest.raises(RpcError):
+        l1.rpc.pay(inv)
+
+    # Now mine funding, though we it's still private.
+    bitcoind.generate_block(1, wait_for_mempool=res['txid'])
+    sync_blockheight(bitcoind, [l1])
+
+    # Various combinations of invoice issuance
+    l1.rpc.invoice(str(10**5) + "sat", 'test3', 'test3')
+    l1.rpc.invoice(str(10**5) + "sat", 'test4', 'test4',
+                   exposeprivatechannels=True)
+
+    # This should mpp across both
+    inv = l3.rpc.invoice(str(amount // 2) + "msat", 'test2', 'test2')['bolt11']
+    l1.rpc.pay(inv)
