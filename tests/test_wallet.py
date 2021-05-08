@@ -1399,3 +1399,11 @@ def test_withdraw_bech32m(node_factory, bitcoind):
     for addr in addrs:
         args += [{addr: 10**3}]
     l1.rpc.multiwithdraw(args)["txid"]
+
+
+def test_retreival_closed_channel(node_factory):
+    """
+    Test that ensure that the listchannels return the closed channel
+    and ensure that this operation has not side effect.
+    """
+    pass

@@ -1593,6 +1593,12 @@ struct db_query db_sqlite3_queries[] = {
          .readonly = false,
     },
     {
+         .name = "SELECT * FROM channels WHERE state=?",
+         .query = "SELECT * FROM channels WHERE state=?",
+         .placeholders = 1,
+         .readonly = true,
+    },
+    {
          .name = "SELECT * FROM channels WHERE peer_id = ?;",
          .query = "SELECT * FROM channels WHERE peer_id = ?;",
          .placeholders = 1,
@@ -2026,10 +2032,42 @@ struct db_query db_sqlite3_queries[] = {
     },
 };
 
+<<<<<<< refs/remotes/ElementsProject/master
 #define DB_SQLITE3_QUERY_COUNT 336
+=======
+<<<<<<< refs/remotes/ElementsProject/master
+#define DB_SQLITE3_QUERY_COUNT 318
+=======
+<<<<<<< refs/remotes/ElementsProject/master
+#define DB_SQLITE3_QUERY_COUNT 315
+=======
+#define DB_SQLITE3_QUERY_COUNT 313
+>>>>>>> Prepare tests
+>>>>>>> Prepare tests
+>>>>>>> Prepare tests
 
 #endif /* HAVE_SQLITE3 */
 
 #endif /* LIGHTNINGD_WALLET_GEN_DB_SQLITE3 */
 
+<<<<<<< refs/remotes/ElementsProject/master
 // SHA256STAMP:df06b800543e6bb886100ca428247ac1097f749098779dae43ba875154700f58
+=======
+<<<<<<< refs/remotes/ElementsProject/master
+// SHA256STAMP:8f8494fdeb030b724d84aa26c0377e7e488ad40e4b1370db7d02470ac29c4ec8
+=======
+<<<<<<< refs/remotes/ElementsProject/master
+// SHA256STAMP:2839b3ea02654d43cce04742850e4c42541818c1641ab5119f077d859a288e5a
+=======
+<<<<<<< refs/remotes/ElementsProject/master
+// SHA256STAMP:3ab5cc5d3610b26e4df12de155aa85990ac825c0e75a1adf410e67e2ca173327
+=======
+<<<<<<< refs/remotes/ElementsProject/master
+// SHA256STAMP:387f4000b85417999e9b27c6d795d4f19012a5515e2464312e865b7f654d70dd
+=======
+// SHA256STAMP:87a364f3a2349e44f1685227f9075605cf1afa70f8648edb2252df0b7cd9bb4a
+>>>>>>> Prepare tests
+>>>>>>> Prepare tests
+>>>>>>> Prepare tests
+>>>>>>> Prepare tests
+>>>>>>> Prepare tests
