@@ -14,3 +14,7 @@
 [submodule "external/gheap"]
 	path = external/gheap
 	url = https://github.com/valyala/gheap
+[submodule "external/lnprototest"]
+	path = external/lnprototest
+	url = https://github.com/vincenzopalazzo/lnprototest.git
+	branch = btc_hack
