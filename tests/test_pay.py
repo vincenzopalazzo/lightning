@@ -4278,3 +4278,22 @@ gives a routehint straight to us causes an issue
     l3.stop()
     with pytest.raises(RpcError, match=r'Destination .* is not reachable directly and all routehints were unusable'):
         l2.rpc.pay(inv)
+
+def test_list_payment_sorted(node_factory):
+    """
+    Check the the list of payment are sorted by the created_at
+    proprity.
+    """
+    l1, l2 = node_factory.line_graph(2, wait_for_announce=True)
+    l3 = node_factory.get_node()
+    l3.rpc.connect(l2.info['id'], 'localhost', l2.port)
+    scid23, _ = l2.fundchannel(l3, 1000000, announce_channel=False)
+
+    wait_for(lambda: l3.rpc.listnodes(l1.info['id'])['nodes'] != [])
+
+    inv = l3.rpc.invoice(10, "test1", "test1")['bolt11']
+    l2.rpc.pay(inv)
+    inv = l3.rpc.invoice(10, "test2", "test1")['bolt11']
+    payments = l3.rpc.listpays()
+    assert payments[0]['label'] == "test1"
+    assert payments[1]['label'] == "test2"

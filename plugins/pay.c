@@ -1702,6 +1702,7 @@ static bool pay_mpp_eq(const struct pay_mpp *pm, const struct sha256 *payment_ha
 	return memcmp(pm->payment_hash, payment_hash, sizeof(struct sha256)) == 0;
 }
 
+/*
 static int cmp_pay_mpp(const struct pay_mpp *a,
 		       const struct pay_mpp *b,
 		       void *unused UNUSED)
@@ -1712,6 +1713,7 @@ static int cmp_pay_mpp(const struct pay_mpp *a,
 		return 0;
 	return 1;
 }
+*/
 
 HTABLE_DEFINE_TYPE(struct pay_mpp, pay_mpp_key, pay_mpp_hash, pay_mpp_eq,
 		   pay_map);
@@ -1808,7 +1810,7 @@ static struct command_result *listsendpays_done(struct command *cmd,
 	struct pay_map pay_map;
 	struct pay_map_iter it;
 	struct pay_mpp *pm;
-	struct pay_mpp *pays;
+//	struct pay_mpp *pays;
 
 	pay_map_init(&pay_map);
 
@@ -1877,25 +1879,39 @@ static struct command_result *listsendpays_done(struct command *cmd,
 		}
 	}
 
+	/* Now we've collapsed them, provide summary. */
+	/*ret = jsonrpc_stream_success(cmd);
+	json_array_start(ret, "pays");
 
-	pays = tal_arr(NULL, struct pay_mpp, pay_map_count(&pay_map));
-	i = 0;
+	//pays = tal_arr(NULL, struct pay_mpp, pay_map_count(&pay_map));
+	//i = 0;
 	for (pm = pay_map_first(&pay_map, &it);
 	     pm;
 	     pm = pay_map_next(&pay_map, &it)) {
-		pays[i++] = *pm;
+		add_new_entry(ret, buf, pm);
 	}
-	pay_map_clear(&pay_map);
+	//pay_map_clear(&pay_map);
 
-	asort(pays, tal_count(pays), cmp_pay_mpp, NULL);
-
+	//asort(pays, tal_count(pays), cmp_pay_mpp, NULL);
+	*/
 	/* Now we've collapsed and sorted them, provide summary. */
-	ret = jsonrpc_stream_success(cmd);
+	/*ret = jsonrpc_stream_success(cmd);
 	json_array_start(ret, "pays");
 
 	for (i = 0; i < tal_count(pays); i++)
 		add_new_entry(ret, buf, &pays[i]);
 	tal_free(pays);
+	*/
+	/* Now we've collapsed them, provide summary. */
+	ret = jsonrpc_stream_success(cmd);
+	json_array_start(ret, "pays");
+
+	for (pm = pay_map_first(&pay_map, &it);
+	     pm;
+	     pm = pay_map_next(&pay_map, &it)) {
+		add_new_entry(ret, buf, pm);
+	}
+	pay_map_clear(&pay_map);
 
 	json_array_end(ret);
 	return command_finished(cmd, ret);

@@ -1055,11 +1055,11 @@ msgid "UPDATE payments   SET failonionreply=?     , faildestperm=?     , failind
 msgstr ""
 
 #: wallet/wallet.c:3127
-msgid "SELECT  id, status, destination, msatoshi, payment_hash, timestamp, payment_preimage, path_secrets, route_nodes, route_channels, msatoshi_sent, description, bolt11, failonionreply, total_msat, partid, local_offer_id FROM payments WHERE payment_hash = ? ORDER BY id;"
+msgid "SELECT  id, status, destination, msatoshi, payment_hash, timestamp, payment_preimage, path_secrets, route_nodes, route_channels, msatoshi_sent, description, bolt11, failonionreply, total_msat, partid, local_offer_id FROM payments WHERE payment_hash = ? ORDER BY timestamp;"
 msgstr ""
 
 #: wallet/wallet.c:3150
-msgid "SELECT  id, status, destination, msatoshi, payment_hash, timestamp, payment_preimage, path_secrets, route_nodes, route_channels, msatoshi_sent, description, bolt11, failonionreply, total_msat, partid, local_offer_id FROM payments ORDER BY id;"
+msgid "SELECT  id, status, destination, msatoshi, payment_hash, timestamp, payment_preimage, path_secrets, route_nodes, route_channels, msatoshi_sent, description, bolt11, failonionreply, total_msat, partid, local_offer_id FROM payments ORDER BY timestamp;"
 msgstr ""
 
 #: wallet/wallet.c:3201
@@ -1257,4 +1257,4 @@ msgstr ""
 #: wallet/test/run-wallet.c:1647
 msgid "INSERT INTO channels (id) VALUES (1);"
 msgstr ""
-#  SHA256STAMP:d59c2813d0fd9ed5988ee972b43846e45fdd566de783d1c9c31e243b76fc6cab
+#  SHA256STAMP:50906ae1a86625ec13f62d388c7eb514aaac850e61e74234158b58007251dace
