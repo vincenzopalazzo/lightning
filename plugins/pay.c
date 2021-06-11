@@ -1905,7 +1905,7 @@ static struct command_result *json_listpays(struct command *cmd,
 					    const char *buf,
 					    const jsmntok_t *params)
 {
-	const char *invstring;
+	const char *invstring, *status;
 	struct sha256 *payment_hash;
 	struct out_req *req;
 
@@ -1914,6 +1914,7 @@ static struct command_result *json_listpays(struct command *cmd,
 		   /* FIXME: parameter should be invstring now */
 		   p_opt("bolt11", param_string, &invstring),
 		   p_opt("payment_hash", param_sha256, &payment_hash),
+		   p_opt("status", param_string, &status),
 		   NULL))
 		return command_param_failed();
 
@@ -1925,6 +1926,9 @@ static struct command_result *json_listpays(struct command *cmd,
 
 	if (payment_hash)
 		json_add_sha256(req->js, "payment_hash", payment_hash);
+
+	if(status)
+		json_add_string(req->js, "status", status);
 
 	return send_outreq(cmd->plugin, req);
 }

@@ -869,7 +869,7 @@ send_payment_core(struct lightningd *ld,
 	bool have_complete = false;
 
 	/* Now, do we already have one or more payments? */
-	payments = wallet_payment_list(tmpctx, ld->wallet, rhash);
+	payments = wallet_payment_list(tmpctx, ld->wallet, rhash, NULL);
 	for (size_t i = 0; i < tal_count(payments); i++) {
 		log_debug(ld->log, "Payment %zu/%zu: %s %s",
 			  i, tal_count(payments),
@@ -1525,12 +1525,13 @@ static struct command_result *json_listsendpays(struct command *cmd,
 	const struct wallet_payment **payments;
 	struct json_stream *response;
 	struct sha256 *rhash;
-	const char *invstring;
+	const char *invstring, *status;
 
 	if (!param(cmd, buffer, params,
 		   /* FIXME: parameter should be invstring now */
 		   p_opt("bolt11", param_string, &invstring),
 		   p_opt("payment_hash", param_sha256, &rhash),
+		   p_opt("status", param_string, &status),
 		   NULL))
 		return command_param_failed();
 
@@ -1562,7 +1563,7 @@ static struct command_result *json_listsendpays(struct command *cmd,
 		}
 	}
 
-	payments = wallet_payment_list(cmd, cmd->ld->wallet, rhash);
+	payments = wallet_payment_list(cmd, cmd->ld->wallet, rhash, NULL);
 
 	response = json_stream_success(cmd);
 
@@ -1615,7 +1616,7 @@ static struct command_result *json_delpay(struct command *cmd,
 				payment_status_to_string(status));
 	}
 
-	payments = wallet_payment_list(cmd, cmd->ld->wallet, payment_hash);
+	payments = wallet_payment_list(cmd, cmd->ld->wallet, payment_hash, NULL);
 
 	if (tal_count(payments) == 0)
 		return command_fail(cmd, PAY_NO_SUCH_PAYMENT, "Unknown payment with payment_hash: %s",

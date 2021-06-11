@@ -1114,10 +1114,12 @@ void wallet_payment_set_failinfo(struct wallet *wallet,
  * wallet_payment_list - Retrieve a list of payments
  *
  * payment_hash: optional filter for only this payment hash.
+ * status: option filtering for all the payment with the specified status.
  */
 const struct wallet_payment **wallet_payment_list(const tal_t *ctx,
 						  struct wallet *wallet,
-						  const struct sha256 *payment_hash);
+						  const struct sha256 *payment_hash,
+						  enum wallet_payment_status *status);
 
 /**
  * wallet_payments_by_offer - Retrieve a list of payments for this local_offer_id
@@ -1280,7 +1282,7 @@ struct channeltx *wallet_channeltxs_get(struct wallet *w, const tal_t *ctx,
  */
 void wallet_forwarded_payment_add(struct wallet *w, const struct htlc_in *in,
 				  const struct short_channel_id *scid_out,
-				  const struct htlc_out *out,
+				  const struct  htlc_out *out,
 				  enum forward_status state,
 				  enum onion_wire failcode);
 
