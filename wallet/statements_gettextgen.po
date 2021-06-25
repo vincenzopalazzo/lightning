@@ -1273,4 +1273,12 @@ msgstr ""
 #: wallet/test/run-wallet.c:1649
 msgid "INSERT INTO channels (id) VALUES (1);"
 msgstr ""
+<<<<<<< refs/remotes/ElementsProject/master
 #  SHA256STAMP:cc1be3f6b134130e9c0251467bd7ecb8a7cdb20f3026bdd26fcf5b286872ef2c
+=======
+<<<<<<< master
+#  SHA256STAMP:913e7b10afc4160e8b437a2c54839d996a94667fc0c00a22f3ca97856491ac72
+=======
+#  SHA256STAMP:21b83399391135d8f591f676c56f36b6e9cb5bcade38c6767e3681a0e06e6cc8
+>>>>>>> Integrate the status flow in the listsendpays command
+>>>>>>> Integrate the status flow in the listsendpays command

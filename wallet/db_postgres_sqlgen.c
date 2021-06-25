@@ -1930,4 +1930,12 @@ struct db_query db_postgres_queries[] = {
 
 #endif /* LIGHTNINGD_WALLET_GEN_DB_POSTGRES */
 
+<<<<<<< refs/remotes/ElementsProject/master
 // SHA256STAMP:8f8494fdeb030b724d84aa26c0377e7e488ad40e4b1370db7d02470ac29c4ec8
+=======
+<<<<<<< master
+// SHA256STAMP:3c0924d3409c1d356d9f90291ae54895d85f34c6a3a42388ad4fb6bfbf13820d
+=======
+// SHA256STAMP:eecbcf6ea4cf782ea88a7dd98ad9ee81b0929578268bae3c7c3e33cb470662af
+>>>>>>> Integrate the status flow in the listsendpays command
+>>>>>>> Integrate the status flow in the listsendpays command

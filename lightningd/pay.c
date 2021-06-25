@@ -1525,13 +1525,13 @@ static struct command_result *json_listsendpays(struct command *cmd,
 	const struct wallet_payment **payments;
 	struct json_stream *response;
 	struct sha256 *rhash;
-	const char *invstring, *status;
+	const char *invstring, *status_str;
 
 	if (!param(cmd, buffer, params,
 		   /* FIXME: parameter should be invstring now */
 		   p_opt("bolt11", param_string, &invstring),
 		   p_opt("payment_hash", param_sha256, &rhash),
-		   p_opt("status", param_string, &status),
+		   p_opt("status", param_string, &status_str),
 		   NULL))
 		return command_param_failed();
 
@@ -1563,7 +1563,14 @@ static struct command_result *json_listsendpays(struct command *cmd,
 		}
 	}
 
-	payments = wallet_payment_list(cmd, cmd->ld->wallet, rhash, NULL);
+	if (status_str) {
+		enum wallet_payment_status status;
+
+		if (!string_to_payment_status(status_str, &status))
+			return command_fail(cmd, JSONRPC2_INVALID_PARAMS, "Unrecognized status: %s", status_str);
+		payments = wallet_payment_list(cmd, cmd->ld->wallet, rhash, &status);
+	} else
+		payments = wallet_payment_list(cmd, cmd->ld->wallet, rhash, NULL);
 
 	response = json_stream_success(cmd);
 
