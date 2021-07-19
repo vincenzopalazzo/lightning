@@ -726,7 +726,7 @@ struct amount_msat channel_amount_receivable(const struct channel *channel)
 	return receivable;
 }
 
-static void json_add_channel(struct lightningd *ld,
+void json_add_channel(struct lightningd *ld,
 			     struct json_stream *response, const char *key,
 			     const struct channel *channel)
 {

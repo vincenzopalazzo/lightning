@@ -1593,8 +1593,8 @@ struct db_query db_postgres_queries[] = {
          .readonly = false,
     },
     {
-         .name = "SELECT * FROM channels WHERE state=?",
-         .query = "SELECT * FROM channels WHERE state=$1",
+         .name = "SELECT * FROM channels WHERE state=?;",
+         .query = "SELECT * FROM channels WHERE state=$1;",
          .placeholders = 1,
          .readonly = true,
     },
@@ -2033,6 +2033,7 @@ struct db_query db_postgres_queries[] = {
 };
 
 <<<<<<< refs/remotes/ElementsProject/master
+<<<<<<< refs/remotes/ElementsProject/master
 #define DB_POSTGRES_QUERY_COUNT 336
 =======
 <<<<<<< refs/remotes/ElementsProject/master
@@ -2045,11 +2046,15 @@ struct db_query db_postgres_queries[] = {
 >>>>>>> Prepare tests
 >>>>>>> Prepare tests
 >>>>>>> Prepare tests
+=======
+#define DB_POSTGRES_QUERY_COUNT 319
+>>>>>>> Fixed db exception
 
 #endif /* HAVE_POSTGRES */
 
 #endif /* LIGHTNINGD_WALLET_GEN_DB_POSTGRES */
 
+<<<<<<< refs/remotes/ElementsProject/master
 <<<<<<< refs/remotes/ElementsProject/master
 // SHA256STAMP:df06b800543e6bb886100ca428247ac1097f749098779dae43ba875154700f58
 =======
@@ -2071,3 +2076,6 @@ struct db_query db_postgres_queries[] = {
 >>>>>>> Prepare tests
 >>>>>>> Prepare tests
 >>>>>>> Prepare tests
+=======
+// SHA256STAMP:34f419579205276c4225f4a700f5554496edbca0f0784ede595ec9cf97ad7f6e
+>>>>>>> Fixed db exception
