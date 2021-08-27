@@ -4603,3 +4603,19 @@ def test_pay_low_max_htlcs(node_factory):
     l1.daemon.wait_for_log(
         r'Number of pre-split HTLCs \([0-9]+\) exceeds our HTLC budget \([0-9]+\), skipping pre-splitter'
     )
+
+
+def test_sendinvoice_to_unknown(node_factory):
+    """
+    Bol12: rpc command sendinvoice try to send a invoice
+    to unknown node avoid to leave the invoice in stored
+    in the database if the command will fail.
+    """
+    l1, l2 = node_factory.get_nodes(2, opts={"experimental-offers": None})
+    l1_bolt12 = l1.rpc.call("offerout", {"amount": 20000, "description": "test"})["bolt12"]
+    with pytest.raises(RpcError):
+        l2.rpc.call("sendinvoice", {"offer": l1_bolt12, "label": "bolt12_is_cool"})
+    l2_info = l2.rpc.getinfo()
+    l1.rpc.connect("{}@{}:{}".format(l2_info["id"], l2_info["binding"][0]["address"], l2_info["binding"][0]["port"]))
+    sendinvoice_payload = l2.rpc.call("sendinvoice", {"offer": l1_bolt12, "label": "bolt12_is_cool"})
+    assert l1 is not None
