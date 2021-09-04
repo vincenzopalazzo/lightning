@@ -1,2 +1,2 @@
 recommonmark>=0.7.*
-pyln-bolt7==1.0.1.*
+pyln-bolt7>=1.0.1.137
