@@ -22,6 +22,10 @@ export FUZZING=${FUZZING:-0}
 
 env
 
+pip3 --version
+
+pip3 install --upgrade pip
+
 pip3 install --user -U -r requirements.txt
 
 # Install utilities that aren't dependencies, but make
