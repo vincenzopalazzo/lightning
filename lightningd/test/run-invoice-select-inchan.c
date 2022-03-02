@@ -704,7 +704,10 @@ bool wallet_invoice_create(struct wallet *wallet UNNEEDED,
 { fprintf(stderr, "wallet_invoice_create called!\n"); abort(); }
 /* Generated stub for wallet_invoice_delete */
 bool wallet_invoice_delete(struct wallet *wallet UNNEEDED,
-			   struct invoice invoice UNNEEDED)
+			   struct invoice invoice UNNEEDED,
+			   enum invoice_status status UNNEEDED,
+			   const struct json_escape *label UNNEEDED,
+			   const char *invstring UNNEEDED)
 { fprintf(stderr, "wallet_invoice_delete called!\n"); abort(); }
 /* Generated stub for wallet_invoice_delete_expired */
 void wallet_invoice_delete_expired(struct wallet *wallet UNNEEDED,

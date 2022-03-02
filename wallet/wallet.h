@@ -887,11 +887,17 @@ bool wallet_invoice_find_unpaid(struct wallet *wallet,
  *
  * @wallet - the wallet to delete the invoice from.
  * @invoice - the invoice to delete.
+ * @status - the invoice status
+ * @label - the invoice label
+ * @invstring - the invoice bolt11 or bolt12 string
  *
  * Return false on failure.
  */
 bool wallet_invoice_delete(struct wallet *wallet,
-			   struct invoice invoice);
+			   struct invoice invoice,
+			   enum invoice_status status,
+			   const struct json_escape *label,
+			   const char *invstring);
 
 /**
  * wallet_invoice_delete_expired - Delete all expired invoices

@@ -175,7 +175,10 @@ bool invoices_create(struct invoices *invoices UNNEEDED,
 { fprintf(stderr, "invoices_create called!\n"); abort(); }
 /* Generated stub for invoices_delete */
 bool invoices_delete(struct invoices *invoices UNNEEDED,
-		     struct invoice invoice UNNEEDED)
+		     struct invoice invoice UNNEEDED,
+		     enum invoice_status status UNNEEDED,
+		     const struct json_escape *label UNNEEDED,
+		     const char *invstring UNNEEDED)
 { fprintf(stderr, "invoices_delete called!\n"); abort(); }
 /* Generated stub for invoices_delete_expired */
 void invoices_delete_expired(struct invoices *invoices UNNEEDED,

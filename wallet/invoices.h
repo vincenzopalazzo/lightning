@@ -108,7 +108,10 @@ bool invoices_find_unpaid(struct invoices *invoices,
  * Return false on failure.
  */
 bool invoices_delete(struct invoices *invoices,
-		     struct invoice invoice);
+		     struct invoice invoice,
+		     enum invoice_status status,
+		     const struct json_escape *label,
+		     const char *invstring);
 
 /**
  * invoices_delete_expired - Delete all expired invoices

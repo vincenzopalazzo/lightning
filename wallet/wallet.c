@@ -2819,9 +2819,12 @@ bool wallet_invoice_find_unpaid(struct wallet *wallet,
 	return invoices_find_unpaid(wallet->invoices, pinvoice, rhash);
 }
 bool wallet_invoice_delete(struct wallet *wallet,
-			   struct invoice invoice)
+			   struct invoice invoice,
+			   enum invoice_status status,
+			   const struct json_escape *label,
+			   const char *invstring)
 {
-	return invoices_delete(wallet->invoices, invoice);
+	return invoices_delete(wallet->invoices, invoice, status, label, invstring);
 }
 void wallet_invoice_delete_expired(struct wallet *wallet, u64 e)
 {

@@ -782,3 +782,40 @@ def test_wait_invoices(node_factory, executor):
     # assert waitres['details'] == {'label': 'invlabel2', 'bolt11': inv2['bolt11'], 'status': 'expired'}
     assert waitres['details'] == {'status': 'expired'}
     assert len(waitres) == 3
+
+    # Now for deletions
+    waitres = l2.rpc.call('wait', {'subsystem': 'invoices', 'indexname': 'deleted_index', 'nextvalue': 0})
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['deleted_index'] == 0
+    assert 'details' not in waitres
+    assert len(waitres) == 2
+
+    waitfut = executor.submit(l2.rpc.call, 'wait', {'subsystem': 'invoices', 'indexname': 'deleted_index', 'nextvalue': 1})
+    time.sleep(1)
+    l2.rpc.delinvoice('invlabel', 'paid')
+    waitres = waitfut.result(TIMEOUT)
+
+    print(waitres)
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['deleted_index'] == 1
+    assert waitres['details'] == {'label': 'invlabel', 'bolt11': inv['bolt11'], 'status': 'paid'}
+    assert len(waitres) == 3
+    
+    # Second returns instantly, without any details.
+    waitres = l2.rpc.call('wait', {'subsystem': 'invoices', 'indexname': 'deleted_index', 'nextvalue': 1})
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['deleted_index'] == 1
+    assert 'details' not in waitres
+    assert len(waitres) == 2
+
+    # Now check delexpiredinvoice works.
+    waitfut = executor.submit(l2.rpc.call, 'wait', {'subsystem': 'invoices', 'indexname': 'deleted_index', 'nextvalue': 2})
+    time.sleep(1)
+    l2.rpc.delexpiredinvoice()
+    waitres = waitfut.result(TIMEOUT)
+
+    print(waitres)
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['deleted_index'] == 2
+    assert waitres['details'] == {'label': 'invlabel2', 'bolt11': inv2['bolt11'], 'status': 'expired'}
+    assert len(waitres) == 3

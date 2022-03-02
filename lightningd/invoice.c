@@ -1406,7 +1406,10 @@ static struct command_result *json_delinvoice(struct command *cmd,
 		return command_failed(cmd, js);
 	}
 
-	if (!wallet_invoice_delete(wallet, i)) {
+	if (!wallet_invoice_delete(wallet, i,
+				   details->state,
+				   details->label,
+				   details->invstring)) {
 		log_broken(cmd->ld->log,
 			   "Error attempting to remove invoice %"PRIu64,
 			   i.id);
