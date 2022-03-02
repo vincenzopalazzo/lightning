@@ -743,3 +743,42 @@ def test_wait_invoices(node_factory, executor):
     assert waitres['created_index'] == 1
     assert 'details' not in waitres
     assert len(waitres) == 2
+
+    # Now for updates
+    waitres = l2.rpc.call('wait', {'subsystem': 'invoices', 'indexname': 'updated_index', 'nextvalue': 0})
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['updated_index'] == 0
+    assert 'details' not in waitres
+    assert len(waitres) == 2
+
+    waitfut = executor.submit(l2.rpc.call, 'wait', {'subsystem': 'invoices', 'indexname': 'updated_index', 'nextvalue': 1})
+    time.sleep(1)
+    l1.rpc.pay(inv['bolt11'])
+    waitres = waitfut.result(TIMEOUT)
+
+    print(waitres)
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['updated_index'] == 1
+    # FIXME: fill in details!
+    # assert waitres['details'] == {'label': 'invlabel', 'bolt11': inv['bolt11'], 'status': 'paid'}
+    assert waitres['details'] == {'status': 'paid'}
+    assert len(waitres) == 3
+    
+    # Second returns instantly, without any details.
+    waitres = l2.rpc.call('wait', {'subsystem': 'invoices', 'indexname': 'updated_index', 'nextvalue': 1})
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['updated_index'] == 1
+    assert 'details' not in waitres
+    assert len(waitres) == 2
+
+    # Now check expiry works.
+    inv2 = l2.rpc.invoice(42, 'invlabel2', 'invdesc2', expiry=2)
+    waitres = l2.rpc.call('wait', {'subsystem': 'invoices', 'indexname': 'updated_index', 'nextvalue': 2})
+
+    print(waitres)
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['updated_index'] == 2
+    # FIXME: fill in details!
+    # assert waitres['details'] == {'label': 'invlabel2', 'bolt11': inv2['bolt11'], 'status': 'expired'}
+    assert waitres['details'] == {'status': 'expired'}
+    assert len(waitres) == 3
