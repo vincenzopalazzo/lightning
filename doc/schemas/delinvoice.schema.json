@@ -38,6 +38,9 @@
       "maxLength": 64,
       "minLength": 64
     },
+    "msatoshi_received": {
+      "deprecated": true
+    },
     "status": {
       "type": "string",
       "description": "State of invoice",
@@ -73,6 +76,7 @@
           "payment_hash": {},
           "pay_index": {},
           "amount_received_msat": {},
+          "msatoshi_received": {},
           "paid_at": {},
           "payment_preimage": {},
           "local_offer_id": {
@@ -101,6 +105,7 @@
           "payment_hash": {},
           "pay_index": {},
           "amount_received_msat": {},
+          "msatoshi_received": {},
           "paid_at": {},
           "payment_preimage": {}
         }
@@ -145,6 +150,7 @@
             "type": "msat",
             "description": "how much was actually received"
           },
+          "msatoshi_received": {},
           "paid_at": {
             "type": "u64",
             "description": "UNIX timestamp of when payment was received"
