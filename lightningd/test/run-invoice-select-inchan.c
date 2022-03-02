@@ -743,7 +743,8 @@ bool wallet_invoice_find_unpaid(struct wallet *wallet UNNEEDED,
 bool wallet_invoice_iterate(struct wallet *wallet UNNEEDED,
 			    struct invoice_iterator *it UNNEEDED,
 			    const enum wait_index *listindex UNNEEDED,
-			    u64 liststart UNNEEDED)
+			    u64 liststart UNNEEDED,
+			    const u64 *listlimit UNNEEDED)
 { fprintf(stderr, "wallet_invoice_iterate called!\n"); abort(); }
 /* Generated stub for wallet_invoice_iterator_deref */
 const struct invoice_details *wallet_invoice_iterator_deref(const tal_t *ctx UNNEEDED,

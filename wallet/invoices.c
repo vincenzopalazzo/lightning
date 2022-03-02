@@ -460,7 +460,8 @@ void invoices_delete_expired(struct invoices *invoices,
 bool invoices_iterate(struct invoices *invoices,
 		      struct invoice_iterator *it,
 		      const enum wait_index *listindex,
-		      u64 liststart)
+		      u64 liststart,
+		      const u64 *listlimit)
 {
 	struct db_stmt *stmt;
 
@@ -482,7 +483,8 @@ bool invoices_iterate(struct invoices *invoices,
 								       ", local_offer_id"
 								       " FROM invoices"
 								       " WHERE updated_index >= ?"
-								       " ORDER BY updated_index;"));
+								       " ORDER BY updated_index"
+								       " LIMIT ?;"));
 		} else {
 			stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT"
 								       "  state"
@@ -500,9 +502,14 @@ bool invoices_iterate(struct invoices *invoices,
 								       ", local_offer_id"
 								       " FROM invoices"
 								       " WHERE id >= ?"
-								       " ORDER BY id;"));
+								       " ORDER BY id"
+								       " LIMIT ?;"));
 		}
 		db_bind_u64(stmt, 0, liststart);
+		if (listlimit)
+			db_bind_u64(stmt, 1, *listlimit);
+		else
+			db_bind_u64(stmt, 1, INT64_MAX);
 		db_query_prepared(stmt);
 		it->p = stmt;
 	} else

@@ -929,7 +929,8 @@ void wallet_invoice_delete_expired(struct wallet *wallet,
 bool wallet_invoice_iterate(struct wallet *wallet,
 			    struct invoice_iterator *it,
 			    const enum wait_index *listindex,
-			    u64 liststart);
+			    u64 liststart,
+			    const u64 *listlimit);
 
 /**
  * wallet_invoice_iterator_deref - Read the details of the

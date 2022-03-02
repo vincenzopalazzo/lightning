@@ -1264,7 +1264,8 @@ static void json_add_invoices(struct json_stream *response,
 			      const struct sha256 *payment_hash,
 			      const struct sha256 *local_offer_id,
 			      const enum wait_index *listindex,
-			      u64 liststart)
+			      u64 liststart,
+			      const u64 *listlimit)
 {
 	struct invoice_iterator it;
 	const struct invoice_details *details;
@@ -1291,7 +1292,7 @@ static void json_add_invoices(struct json_stream *response,
 
 	} else {
 		memset(&it, 0, sizeof(it));
-		while (wallet_invoice_iterate(wallet, &it, listindex, liststart)) {
+		while (wallet_invoice_iterate(wallet, &it, listindex, liststart, listlimit)) {
 			details = wallet_invoice_iterator_deref(response,
 								wallet, &it);
 			/* FIXME: db can filter this better! */
@@ -1319,7 +1320,7 @@ static struct command_result *json_listinvoices(struct command *cmd,
 	const char *invstring;
 	struct sha256 *payment_hash, *offer_id;
 	enum wait_index *listindex;
-	u64 *liststart;
+	u64 *liststart, *listlimit;
 	char *fail;
 
 	if (!param(cmd, buffer, params,
@@ -1329,6 +1330,7 @@ static struct command_result *json_listinvoices(struct command *cmd,
 		   p_opt("offer_id", param_sha256, &offer_id),
 		   p_opt("index", param_index, &listindex),
 		   p_opt_def("start", param_u64, &liststart, 0),
+		   p_opt("limit", param_u64, &listlimit),
 		   NULL))
 		return command_param_failed();
 
@@ -1368,7 +1370,7 @@ static struct command_result *json_listinvoices(struct command *cmd,
 	response = json_stream_success(cmd);
 	json_array_start(response, "invoices");
 	json_add_invoices(response, wallet, label, payment_hash, offer_id,
-			  listindex, *liststart);
+			  listindex, *liststart, listlimit);
 	json_array_end(response);
 	return command_success(cmd, response);
 }
