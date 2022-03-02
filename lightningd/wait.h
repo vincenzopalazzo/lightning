@@ -2,6 +2,7 @@
 #define LIGHTNING_LIGHTNINGD_WAIT_H
 #include "config.h"
 #include <ccan/short_types/short_types.h>
+#include <common/json_tok.h>
 
 struct lightningd;
 
@@ -48,5 +49,11 @@ u64 LAST_ARG_NULL index_update(struct lightningd *ld,
 				enum wait_index index,
 				u64 increase,
 				...);
+
+/* For passing in index parameters. */
+struct command_result *param_index(struct command *cmd, const char *name,
+				   const char *buffer,
+				   const jsmntok_t *tok,
+				   enum wait_index **index);
 
 #endif /* LIGHTNING_LIGHTNINGD_WAIT_H */

@@ -206,7 +206,9 @@ const struct invoice_details *invoices_get_details(const tal_t *ctx UNNEEDED,
 { fprintf(stderr, "invoices_get_details called!\n"); abort(); }
 /* Generated stub for invoices_iterate */
 bool invoices_iterate(struct invoices *invoices UNNEEDED,
-		      struct invoice_iterator *it UNNEEDED)
+		      struct invoice_iterator *it UNNEEDED,
+		      const enum wait_index *listindex UNNEEDED,
+		      u64 liststart UNNEEDED)
 { fprintf(stderr, "invoices_iterate called!\n"); abort(); }
 /* Generated stub for invoices_iterator_deref */
 const struct invoice_details *invoices_iterator_deref(

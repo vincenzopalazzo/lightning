@@ -2831,9 +2831,11 @@ void wallet_invoice_delete_expired(struct wallet *wallet, u64 e)
 	invoices_delete_expired(wallet->invoices, e);
 }
 bool wallet_invoice_iterate(struct wallet *wallet,
-			    struct invoice_iterator *it)
+			    struct invoice_iterator *it,
+			    const enum wait_index *listindex,
+			    u64 liststart)
 {
-	return invoices_iterate(wallet->invoices, it);
+	return invoices_iterate(wallet->invoices, it, listindex, liststart);
 }
 const struct invoice_details *
 wallet_invoice_iterator_deref(const tal_t *ctx, struct wallet *wallet,

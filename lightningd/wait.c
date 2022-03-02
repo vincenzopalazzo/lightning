@@ -1,7 +1,6 @@
 /* Code to be notified when various standardized events happen. */
 #include <ccan/array_size/array_size.h>
 #include <common/json_command.h>
-#include <common/json_tok.h>
 #include <common/overflows.h>
 #include <common/param.h>
 #include <lightningd/jsonrpc.h>
@@ -122,11 +121,11 @@ static struct command_result *param_subsystem(struct command *cmd,
 				     "unknown subsystem");
 }
 
-static struct command_result *param_index(struct command *cmd,
-					  const char *name,
-					  const char *buffer,
-					  const jsmntok_t *tok,
-					  enum wait_index **index)
+struct command_result *param_index(struct command *cmd,
+				   const char *name,
+				   const char *buffer,
+				   const jsmntok_t *tok,
+				   enum wait_index **index)
 {
 	for (size_t i = 0; i < ARRAY_SIZE(index_names); i++) {
 		if (json_tok_streq(buffer, tok, index_names[i])) {
@@ -136,8 +135,7 @@ static struct command_result *param_index(struct command *cmd,
 		}
 	}
 
-	return command_fail_badparam(cmd, name,
-				     buffer, tok,
+	return command_fail_badparam(cmd, name, buffer, tok,
 				     "unknown index");
 }
 

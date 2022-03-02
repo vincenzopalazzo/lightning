@@ -139,7 +139,9 @@ void invoices_delete_expired(struct invoices *invoices,
  *   }
  */
 bool invoices_iterate(struct invoices *invoices,
-		      struct invoice_iterator *it);
+		      struct invoice_iterator *it,
+		      const enum wait_index *listindex,
+		      u64 liststart);
 
 /**
  * wallet_invoice_iterator_deref - Read the details of the

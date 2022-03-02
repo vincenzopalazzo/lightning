@@ -458,27 +458,51 @@ void invoices_delete_expired(struct invoices *invoices,
 }
 
 bool invoices_iterate(struct invoices *invoices,
-		      struct invoice_iterator *it)
+		      struct invoice_iterator *it,
+		      const enum wait_index *listindex,
+		      u64 liststart)
 {
 	struct db_stmt *stmt;
 
 	if (!it->p) {
-		stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT"
-						       "  state"
-						       ", payment_key"
-						       ", payment_hash"
-						       ", label"
-						       ", msatoshi"
-						       ", expiry_time"
-						       ", pay_index"
-						       ", msatoshi_received"
-						       ", paid_timestamp"
-						       ", bolt11"
-						       ", description"
-						       ", features"
-						       ", local_offer_id"
-						       " FROM invoices"
-						       " ORDER BY id;"));
+		if (listindex && *listindex == WAIT_INDEX_UPDATED) {
+			stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT"
+								       "  state"
+								       ", payment_key"
+								       ", payment_hash"
+								       ", label"
+								       ", msatoshi"
+								       ", expiry_time"
+								       ", pay_index"
+								       ", msatoshi_received"
+								       ", paid_timestamp"
+								       ", bolt11"
+								       ", description"
+								       ", features"
+								       ", local_offer_id"
+								       " FROM invoices"
+								       " WHERE updated_index >= ?"
+								       " ORDER BY updated_index;"));
+		} else {
+			stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT"
+								       "  state"
+								       ", payment_key"
+								       ", payment_hash"
+								       ", label"
+								       ", msatoshi"
+								       ", expiry_time"
+								       ", pay_index"
+								       ", msatoshi_received"
+								       ", paid_timestamp"
+								       ", bolt11"
+								       ", description"
+								       ", features"
+								       ", local_offer_id"
+								       " FROM invoices"
+								       " WHERE id >= ?"
+								       " ORDER BY id;"));
+		}
+		db_bind_u64(stmt, 0, liststart);
 		db_query_prepared(stmt);
 		it->p = stmt;
 	} else

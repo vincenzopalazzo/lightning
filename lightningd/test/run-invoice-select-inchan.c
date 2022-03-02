@@ -504,6 +504,12 @@ struct command_result *param_escaped_string(struct command *cmd UNNEEDED,
 					    const jsmntok_t *tok UNNEEDED,
 					    const char **str UNNEEDED)
 { fprintf(stderr, "param_escaped_string called!\n"); abort(); }
+/* Generated stub for param_index */
+struct command_result *param_index(struct command *cmd UNNEEDED, const char *name UNNEEDED,
+				   const char *buffer UNNEEDED,
+				   const jsmntok_t *tok UNNEEDED,
+				   enum wait_index **index UNNEEDED)
+{ fprintf(stderr, "param_index called!\n"); abort(); }
 /* Generated stub for param_label */
 struct command_result *param_label(struct command *cmd UNNEEDED, const char *name UNNEEDED,
 				   const char * buffer UNNEEDED, const jsmntok_t *tok UNNEEDED,
@@ -735,7 +741,9 @@ bool wallet_invoice_find_unpaid(struct wallet *wallet UNNEEDED,
 { fprintf(stderr, "wallet_invoice_find_unpaid called!\n"); abort(); }
 /* Generated stub for wallet_invoice_iterate */
 bool wallet_invoice_iterate(struct wallet *wallet UNNEEDED,
-			    struct invoice_iterator *it UNNEEDED)
+			    struct invoice_iterator *it UNNEEDED,
+			    const enum wait_index *listindex UNNEEDED,
+			    u64 liststart UNNEEDED)
 { fprintf(stderr, "wallet_invoice_iterate called!\n"); abort(); }
 /* Generated stub for wallet_invoice_iterator_deref */
 const struct invoice_details *wallet_invoice_iterator_deref(const tal_t *ctx UNNEEDED,

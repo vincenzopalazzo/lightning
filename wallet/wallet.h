@@ -9,6 +9,7 @@
 #include <lightningd/bitcoind.h>
 #include <lightningd/log.h>
 #include <lightningd/peer_htlcs.h>
+#include <lightningd/wait.h>
 
 struct amount_msat;
 struct invoices;
@@ -926,7 +927,9 @@ void wallet_invoice_delete_expired(struct wallet *wallet,
  *   }
  */
 bool wallet_invoice_iterate(struct wallet *wallet,
-			    struct invoice_iterator *it);
+			    struct invoice_iterator *it,
+			    const enum wait_index *listindex,
+			    u64 liststart);
 
 /**
  * wallet_invoice_iterator_deref - Read the details of the
