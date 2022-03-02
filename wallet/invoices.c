@@ -25,7 +25,7 @@ struct invoice_waiter {
 
 struct invoices {
 	/* The database connection to use. */
-	struct db *db;
+	struct wallet *wallet;
 	/* The timers object to use for expirations. */
 	struct timers *timers;
 	/* Waiters waiting for invoices to be paid, expired, or deleted. */
@@ -129,7 +129,7 @@ static struct invoice_details *wallet_stmt2invoice_details(const tal_t *ctx,
 static void update_db_expirations(struct invoices *invoices, u64 now)
 {
 	struct db_stmt *stmt;
-	stmt = db_prepare_v2(invoices->db, SQL("UPDATE invoices"
+	stmt = db_prepare_v2(invoices->wallet->db, SQL("UPDATE invoices"
 					       "   SET state = ?"
 					       " WHERE state = ?"
 					       "   AND expiry_time <= ?;"));
@@ -142,12 +142,12 @@ static void update_db_expirations(struct invoices *invoices, u64 now)
 static void install_expiration_timer(struct invoices *invoices);
 
 struct invoices *invoices_new(const tal_t *ctx,
-			      struct db *db,
+			      struct wallet *wallet,
 			      struct timers *timers)
 {
 	struct invoices *invs = tal(ctx, struct invoices);
 
-	invs->db = db;
+	invs->wallet = wallet;
 	invs->timers = timers;
 
 	list_head_init(&invs->waiters);
@@ -177,7 +177,7 @@ static void trigger_expiration(struct invoices *invoices)
 
 	/* Acquire all expired invoices and save them in a list */
 	list_head_init(&idlist);
-	stmt = db_prepare_v2(invoices->db, SQL("SELECT id"
+	stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT id"
 					       "  FROM invoices"
 					       " WHERE state = ?"
 					       "   AND expiry_time <= ?"));
@@ -216,7 +216,7 @@ static void install_expiration_timer(struct invoices *invoices)
 	assert(!invoices->expiration_timer);
 
 	/* Find unpaid invoice with nearest expiry time */
-	stmt = db_prepare_v2(invoices->db, SQL("SELECT MIN(expiry_time)"
+	stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT MIN(expiry_time)"
 					       "  FROM invoices"
 					       " WHERE state = ?;"));
 	db_bind_int(stmt, 0, UNPAID);
@@ -283,7 +283,7 @@ bool invoices_create(struct invoices *invoices,
 
 	/* Save to database. */
 	stmt = db_prepare_v2(
-	    invoices->db,
+	    invoices->wallet->db,
 	    SQL("INSERT INTO invoices"
 		"            ( payment_hash, payment_key, state"
 		"            , msatoshi, label, expiry_time"
@@ -339,7 +339,7 @@ bool invoices_find_by_label(struct invoices *invoices,
 			    const struct json_escape *label)
 {
 	struct db_stmt *stmt;
-	stmt = db_prepare_v2(invoices->db, SQL("SELECT id"
+	stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT id"
 					       "  FROM invoices"
 					       " WHERE label = ?;"));
 	db_bind_json_escape(stmt, 0, label);
@@ -361,7 +361,7 @@ bool invoices_find_by_rhash(struct invoices *invoices,
 {
 	struct db_stmt *stmt;
 
-	stmt = db_prepare_v2(invoices->db, SQL("SELECT id"
+	stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT id"
 					       "  FROM invoices"
 					       " WHERE payment_hash = ?;"));
 	db_bind_sha256(stmt, 0, rhash);
@@ -382,7 +382,7 @@ bool invoices_find_unpaid(struct invoices *invoices,
 			  const struct sha256 *rhash)
 {
 	struct db_stmt *stmt;
-	stmt = db_prepare_v2(invoices->db, SQL("SELECT id"
+	stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT id"
 					       "  FROM invoices"
 					       " WHERE payment_hash = ?"
 					       "   AND state = ?;"));
@@ -405,7 +405,7 @@ bool invoices_delete(struct invoices *invoices, struct invoice invoice)
 	struct db_stmt *stmt;
 	int changes;
 	/* Delete from database. */
-	stmt = db_prepare_v2(invoices->db,
+	stmt = db_prepare_v2(invoices->wallet->db,
 			     SQL("DELETE FROM invoices WHERE id=?;"));
 	db_bind_u64(stmt, 0, invoice.id);
 	db_exec_prepared_v2(stmt);
@@ -425,7 +425,7 @@ void invoices_delete_expired(struct invoices *invoices,
 			     u64 max_expiry_time)
 {
 	struct db_stmt *stmt;
-	stmt = db_prepare_v2(invoices->db, SQL(
+	stmt = db_prepare_v2(invoices->wallet->db, SQL(
 			  "DELETE FROM invoices"
 			  " WHERE state = ?"
 			  "   AND expiry_time <= ?;"));
@@ -440,7 +440,7 @@ bool invoices_iterate(struct invoices *invoices,
 	struct db_stmt *stmt;
 
 	if (!it->p) {
-		stmt = db_prepare_v2(invoices->db, SQL("SELECT"
+		stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT"
 						       "  state"
 						       ", payment_key"
 						       ", payment_hash"
@@ -498,7 +498,7 @@ static enum invoice_status invoice_get_status(struct invoices *invoices, struct 
 	bool res;
 
 	stmt = db_prepare_v2(
-	    invoices->db, SQL("SELECT state FROM invoices WHERE id = ?;"));
+	    invoices->wallet->db, SQL("SELECT state FROM invoices WHERE id = ?;"));
 	db_bind_u64(stmt, 0, invoice.id);
 	db_query_prepared(stmt);
 
@@ -544,11 +544,11 @@ bool invoices_resolve(struct invoices *invoices,
 		return false;
 
 	/* Assign a pay-index. */
-	pay_index = get_next_pay_index(invoices->db);
+	pay_index = get_next_pay_index(invoices->wallet->db);
 	paid_timestamp = time_now().ts.tv_sec;
 
 	/* Update database. */
-	stmt = db_prepare_v2(invoices->db, SQL("UPDATE invoices"
+	stmt = db_prepare_v2(invoices->wallet->db, SQL("UPDATE invoices"
 					       "   SET state=?"
 					       "     , pay_index=?"
 					       "     , msatoshi_received=?"
@@ -561,7 +561,7 @@ bool invoices_resolve(struct invoices *invoices,
 	db_bind_u64(stmt, 4, invoice.id);
 	db_exec_prepared_v2(take(stmt));
 
-	maybe_mark_offer_used(invoices->db, invoice);
+	maybe_mark_offer_used(invoices->wallet->db, invoice);
 
 	/* Tell all the waiters about the paid invoice. */
 	trigger_invoice_waiter_resolve(invoices, invoice.id, &invoice);
@@ -606,7 +606,7 @@ void invoices_waitany(const tal_t *ctx,
 	struct invoice invoice;
 
 	/* Look for an already-paid invoice. */
-	stmt = db_prepare_v2(invoices->db,
+	stmt = db_prepare_v2(invoices->wallet->db,
 			     SQL("SELECT id"
 				 "  FROM invoices"
 				 " WHERE pay_index IS NOT NULL"
@@ -656,7 +656,7 @@ const struct invoice_details *invoices_get_details(const tal_t *ctx,
 	bool res;
 	struct invoice_details *details;
 
-	stmt = db_prepare_v2(invoices->db, SQL("SELECT"
+	stmt = db_prepare_v2(invoices->wallet->db, SQL("SELECT"
 					       "  state"
 					       ", payment_key"
 					       ", payment_hash"

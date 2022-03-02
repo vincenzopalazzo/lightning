@@ -83,7 +83,7 @@ struct wallet *wallet_new(struct lightningd *ld, struct timers *timers,
 	wallet->db = db_setup(wallet, ld, wallet->bip32_base);
 
 	db_begin_transaction(wallet->db);
-	wallet->invoices = invoices_new(wallet, wallet->db, timers);
+	wallet->invoices = invoices_new(wallet, wallet, timers);
 	outpointfilters_init(wallet);
 	load_indexes(wallet->db, "invoices", &ld->indexes[WAIT_SUBSYSTEM_INVOICE]);
 	db_commit_transaction(wallet->db);
