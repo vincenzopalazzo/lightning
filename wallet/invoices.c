@@ -784,6 +784,12 @@ void invoice_index_created(struct lightningd *ld,
 	assert(label);
 	assert(invstring);
 
+	/* FIXME: sqlite3 primary keys need AUTOINCREMENT! */
+	if (created_index <= *idx) {
+		log_unusual(ld->log, "warning: created invoice with duplicate index!");
+		return;
+	}
+
 	/* This can go up by *more* than one. */
 	assert(created_index > *idx);
 	invoice_index_up(ld, state, label, invstring, WAIT_INDEX_CREATED,
