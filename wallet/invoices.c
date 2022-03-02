@@ -317,6 +317,8 @@ bool invoices_create(struct invoices *invoices,
 	db_exec_prepared_v2(stmt);
 
 	pinvoice->id = db_last_insert_id_v2(take(stmt));
+	invoice_index_created(invoices->wallet->ld, UNPAID, label, b11enc,
+			      pinvoice->id);
 
 	/* Install expiration trigger. */
 	if (!invoices->expiration_timer ||

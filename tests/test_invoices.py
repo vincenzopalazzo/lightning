@@ -1,7 +1,7 @@
 from fixtures import *  # noqa: F401,F403
 from fixtures import TEST_NETWORK
 from pyln.client import RpcError, Millisatoshi
-from utils import only_one, wait_for, wait_channel_quiescent, mine_funding_to_announce
+from utils import only_one, wait_for, wait_channel_quiescent, mine_funding_to_announce, TIMEOUT
 
 
 import pytest
@@ -712,3 +712,34 @@ def test_listinvoices_filter(node_factory):
     for q in queries:
         r = l1.rpc.listinvoices(**q)
         assert len(r['invoices']) == 0
+
+
+def test_wait_invoices(node_factory, executor):
+    l1, l2 = node_factory.line_graph(2)
+
+    # Asking for 0 gives us current index.
+    waitres = l2.rpc.call('wait', {'subsystem': 'invoices', 'indexname': 'created_index', 'nextvalue': 0})
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['created_index'] == 0
+    assert 'details' not in waitres
+    assert len(waitres) == 2
+
+    # Now ask for 1.
+    waitfut = executor.submit(l2.rpc.call, 'wait', {'subsystem': 'invoices', 'indexname': 'created_index', 'nextvalue': 1})
+    time.sleep(1)
+
+    inv = l2.rpc.invoice(42, 'invlabel', 'invdesc')
+    waitres = waitfut.result(TIMEOUT)
+
+    print(waitres)
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['created_index'] == 1
+    assert waitres['details'] == {'label': 'invlabel', 'bolt11': inv['bolt11'], 'status': 'unpaid'}
+    assert len(waitres) == 3
+
+    # Second returns instantly, without any details.
+    waitres = l2.rpc.call('wait', {'subsystem': 'invoices', 'indexname': 'created_index', 'nextvalue': 1})
+    assert waitres['subsystem'] == 'invoices'
+    assert waitres['created_index'] == 1
+    assert 'details' not in waitres
+    assert len(waitres) == 2
