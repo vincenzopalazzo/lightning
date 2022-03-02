@@ -870,6 +870,9 @@ static struct migration dbmigrations[] = {
      NULL},
     {SQL("ALTER TABLE channel_htlcs ADD fees_msat BIGINT DEFAULT 0"), NULL},
     {SQL("ALTER TABLE channel_funding_inflights ADD lease_fee BIGINT DEFAULT 0"), NULL},
+    /* FIXME!  We also need to add AUTOINCREMENT after PRIMARY KEY (id)
+     * in sqlite3 (Postgres is fine) to avoid id reuse! */
+    {SQL("ALTER TABLE invoices ADD updated_index BIGINT DEFAULT 0"), NULL},
 };
 
 /* Leak tracking. */

@@ -1,6 +1,7 @@
 #ifndef LIGHTNING_LIGHTNINGD_WAIT_H
 #define LIGHTNING_LIGHTNINGD_WAIT_H
 #include "config.h"
+#include <ccan/short_types/short_types.h>
 
 struct lightningd;
 

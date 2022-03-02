@@ -1,6 +1,9 @@
 #include "config.h"
 #include <ccan/tal/str/str.h>
 #include <common/timeout.h>
+#include <lightningd/invoice.h>
+#include <lightningd/lightningd.h>
+#include <lightningd/wait.h>
 #include <wallet/db.h>
 #include <wallet/invoices.h>
 #include <wallet/wallet.h>
@@ -677,4 +680,68 @@ const struct invoice_details *invoices_get_details(const tal_t *ctx,
 	details = wallet_stmt2invoice_details(ctx, stmt);
 	tal_free(stmt);
 	return details;
+}
+
+static u64 invoice_index_up(struct lightningd *ld,
+			    enum invoice_status state,
+			    const struct json_escape *label,
+			    const char *invstring,
+			    enum wait_index idx,
+			    u64 increase)
+{
+	const char *invstrname;
+
+	if (invstring && strstarts(invstring, "lni"))
+		invstrname = "bolt12";
+	else
+		invstrname = "bolt11";
+	return index_update(ld, WAIT_SUBSYSTEM_INVOICE, idx, increase,
+			    "status", invoice_status_str(state),
+			    /* We don't want to add more JSON escapes here! */
+			    "=label", label ? tal_fmt(tmpctx, "\"%s\"", label->s) : NULL,
+			    invstrname, invstring,
+			    NULL);
+}
+
+void invoice_index_deleted(struct lightningd *ld,
+			   enum invoice_status state,
+			   const struct json_escape *label,
+			   const char *invstring)
+{
+	assert(label);
+	assert(invstring);
+	invoice_index_up(ld, state, label, invstring, WAIT_INDEX_DELETED, 1);
+}
+
+/* Fortuntely, dbids start at 1, not 0! */
+void invoice_index_created(struct lightningd *ld,
+			   enum invoice_status state,
+			   const struct json_escape *label,
+			   const char *invstring,
+			   u64 created_index)
+{
+	u64 *idx = index_get(ld, WAIT_SUBSYSTEM_INVOICE, WAIT_INDEX_CREATED);
+
+	assert(label);
+	assert(invstring);
+
+	/* This can go up by *more* than one. */
+	assert(created_index > *idx);
+	invoice_index_up(ld, state, label, invstring, WAIT_INDEX_CREATED,
+		created_index - *idx);
+}
+
+/* FIXME: We allow missing label and invstring here! :( */
+u64 invoice_index_update(struct lightningd *ld,
+			 enum invoice_status state,
+			 const struct json_escape *label,
+			 const char *invstring)
+{
+	u64 val = invoice_index_up(ld, state, label, invstring,
+				   WAIT_INDEX_UPDATED, 1);
+
+	db_set_intvar(ld->wallet->db, "next_invoice_updated_index", val);
+
+	/* Return one *they* are to use */
+	return val - 1;
 }
