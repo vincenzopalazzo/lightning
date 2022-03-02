@@ -11,6 +11,7 @@
 
 struct channel_id;
 struct ext_key;
+struct indexes;
 struct lightningd;
 struct log;
 struct node_id;
@@ -256,5 +257,9 @@ const char **db_changes(struct db *db);
 
 /* Get the current data version. */
 u32 db_data_version_get(struct db *db);
+
+/* We assume standard column name for created/updated indexes */
+void load_indexes(struct db *db, const char *tablename,
+		  struct indexes *indexes);
 
 #endif /* LIGHTNING_WALLET_DB_H */

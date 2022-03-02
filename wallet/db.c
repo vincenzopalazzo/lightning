@@ -2357,6 +2357,34 @@ const char **db_changes(struct db *db)
 	return db->changes;
 }
 
+/* We assume (as many tables have) a 0-based `id` field for the created_index.
+ * FIXME: This isn't quite right for sqlite3 (for postgresql it is), because it
+ * should have `AUTOINCREMENT` after `PRIMARY KEY (id)`.  Otherwise if
+ * we delete the final entry and re-add, we'll get a duplicate! */
+void load_indexes(struct db *db, const char *tablename,
+		  struct indexes *indexes)
+{
+	struct db_stmt *stmt;
+
+	stmt = db_prepare_v2(db, SQL("SELECT MAX(id) FROM ?;"));
+	db_bind_text(stmt, 0, tablename);
+	db_query_prepared(stmt);
+	if (db_step(stmt))
+		indexes->i[WAIT_INDEX_CREATED] = db_col_u64(stmt, "MAX(id)");
+	else
+		indexes->i[WAIT_INDEX_CREATED] = 0;
+	tal_free(stmt);
+
+	/* This stores the *next* index */
+	indexes->i[WAIT_INDEX_UPDATED]
+		= db_get_intvar(db,
+				tal_fmt(tmpctx, "next_%s_updated_index",
+					tablename),
+				1) - 1;
+	/* This one doesn't get stored persistently! */
+	indexes->i[WAIT_INDEX_DELETED] = 0;
+}
+
 size_t db_query_colnum(const struct db_stmt *stmt,
 		       const char *colname)
 {
