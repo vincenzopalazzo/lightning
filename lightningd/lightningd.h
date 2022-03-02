@@ -3,6 +3,7 @@
 #include "config.h"
 #include <lightningd/htlc_end.h>
 #include <lightningd/htlc_set.h>
+#include <lightningd/wait.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <wallet/wallet.h>
@@ -187,6 +188,8 @@ struct lightningd {
 	struct list_head close_commands;
 	/* Outstanding ping commands. */
 	struct list_head ping_commands;
+	/* Outstanding wait commands */
+	struct list_head wait_commands;
 
 	/* Maintained by invoices.c */
 	struct invoices *invoices;
@@ -208,6 +211,9 @@ struct lightningd {
 	/* Used these feerates instead of whatever bcli returns (up to
 	 * FEERATE_PENALTY). */
 	u32 *force_feerates;
+
+	/* Indexes used by all the wait infra */
+	struct indexes indexes[NUM_WAIT_SUBSYSTEM];
 
 #if DEVELOPER
 	/* If we want to debug a subdaemon/plugin. */

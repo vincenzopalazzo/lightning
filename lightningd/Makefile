@@ -36,6 +36,7 @@ LIGHTNINGD_SRC :=				\
 	lightningd/plugin_hook.c		\
 	lightningd/routehint.c			\
 	lightningd/subd.c			\
+	lightningd/wait.c			\
 	lightningd/watch.c
 
 
