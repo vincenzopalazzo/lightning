@@ -221,7 +221,9 @@ struct invoices *invoices_new(const tal_t *ctx UNNEEDED,
 /* Generated stub for invoices_resolve */
 bool invoices_resolve(struct invoices *invoices UNNEEDED,
 		      struct invoice invoice UNNEEDED,
-		      struct amount_msat received UNNEEDED)
+		      struct amount_msat received UNNEEDED,
+		      const struct json_escape *label UNNEEDED,
+		      const char *invstring UNNEEDED)
 { fprintf(stderr, "invoices_resolve called!\n"); abort(); }
 /* Generated stub for invoices_waitany */
 void invoices_waitany(const tal_t *ctx UNNEEDED,

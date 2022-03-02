@@ -2843,9 +2843,11 @@ wallet_invoice_iterator_deref(const tal_t *ctx, struct wallet *wallet,
 }
 bool wallet_invoice_resolve(struct wallet *wallet,
 			    struct invoice invoice,
-			    struct amount_msat msatoshi_received)
+			    struct amount_msat msatoshi_received,
+			    const struct json_escape *label,
+			    const char *invstring)
 {
-	return invoices_resolve(wallet->invoices, invoice, msatoshi_received);
+	return invoices_resolve(wallet->invoices, invoice, msatoshi_received, label, invstring);
 }
 void wallet_invoice_waitany(const tal_t *ctx,
 			    struct wallet *wallet,

@@ -759,9 +759,7 @@ def test_wait_invoices(node_factory, executor):
     print(waitres)
     assert waitres['subsystem'] == 'invoices'
     assert waitres['updated_index'] == 1
-    # FIXME: fill in details!
-    # assert waitres['details'] == {'label': 'invlabel', 'bolt11': inv['bolt11'], 'status': 'paid'}
-    assert waitres['details'] == {'status': 'paid'}
+    assert waitres['details'] == {'label': 'invlabel', 'bolt11': inv['bolt11'], 'status': 'paid'}
     assert len(waitres) == 3
     
     # Second returns instantly, without any details.

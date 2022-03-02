@@ -952,7 +952,9 @@ const struct invoice_details *wallet_invoice_iterator_deref(const tal_t *ctx,
  */
 bool wallet_invoice_resolve(struct wallet *wallet,
 			    struct invoice invoice,
-			    struct amount_msat received);
+			    struct amount_msat received,
+			    const struct json_escape *label,
+			    const char *invstring);
 
 /**
  * wallet_invoice_waitany - Wait for any invoice to be paid.

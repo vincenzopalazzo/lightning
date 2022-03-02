@@ -169,6 +169,8 @@ struct invoice_payment_hook_payload {
 	struct amount_msat msat;
 	/* Preimage we'll give it if succeeds. */
 	struct preimage preimage;
+	/* bolt11/bolt12 string */
+	const char *invstring;
 	/* FIXME: Include raw payload! */
 };
 
@@ -317,7 +319,8 @@ invoice_payment_hooks_done(struct invoice_payment_hook_payload *payload STEALS)
 	}
 
 	/* Paid or expired in the meantime. */
-	if (!wallet_invoice_resolve(ld->wallet, invoice, payload->msat)) {
+	if (!wallet_invoice_resolve(ld->wallet, invoice, payload->msat,
+				    payload->label, payload->invstring)) {
 		htlc_set_fail(payload->set, take(failmsg_incorrect_or_unknown(
 							 NULL, ld, payload->set->htlcs[0])));
 		return;
@@ -470,6 +473,7 @@ void invoice_try_pay(struct lightningd *ld,
 	payload = tal(NULL, struct invoice_payment_hook_payload);
 	payload->ld = ld;
 	payload->label = tal_steal(payload, details->label);
+	payload->invstring = tal_steal(payload, details->invstring);
 	payload->msat = set->so_far;
 	payload->preimage = details->r;
 	payload->set = set;

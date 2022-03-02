@@ -745,7 +745,9 @@ const struct invoice_details *wallet_invoice_iterator_deref(const tal_t *ctx UNN
 /* Generated stub for wallet_invoice_resolve */
 bool wallet_invoice_resolve(struct wallet *wallet UNNEEDED,
 			    struct invoice invoice UNNEEDED,
-			    struct amount_msat received UNNEEDED)
+			    struct amount_msat received UNNEEDED,
+			    const struct json_escape *label UNNEEDED,
+			    const char *invstring UNNEEDED)
 { fprintf(stderr, "wallet_invoice_resolve called!\n"); abort(); }
 /* Generated stub for wallet_invoice_waitany */
 void wallet_invoice_waitany(const tal_t *ctx UNNEEDED,

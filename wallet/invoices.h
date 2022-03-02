@@ -166,7 +166,9 @@ const struct invoice_details *invoices_iterator_deref(
  */
 bool invoices_resolve(struct invoices *invoices,
 		      struct invoice invoice,
-		      struct amount_msat received);
+		      struct amount_msat received,
+		      const struct json_escape *label,
+		      const char *invstring);
 
 /**
  * invoices_waitany - Wait for any invoice to be paid.
