@@ -730,6 +730,7 @@ static struct io_plan *plugin_read_json(struct io_conn *conn,
 
 	/* Read and process all messages from the connection */
 	if (have_full) {
+		log_info(plugin->log, "%s", plugin->buffer);
 		do {
 			bool destroyed;
 			const char *err;
