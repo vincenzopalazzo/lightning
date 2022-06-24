@@ -726,6 +726,8 @@ static struct io_plan *plugin_read_json(struct io_conn *conn,
 	if (plugin->used == tal_count(plugin->buffer))
 		tal_resize(&plugin->buffer, plugin->used * 2);
 
+	log_info(plugin->log, "%s", plugin->buffer);
+
 	/* Read and process all messages from the connection */
 	if (have_full) {
 		do {
