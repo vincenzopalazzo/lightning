@@ -12,21 +12,13 @@
         "type": "object",
         "additionalProperties": true,
         "required": [
-          "peer_id",
-          "peer_connected",
           "state",
           "opener",
-          "features"
+          "features",
+          "peer_connected",
+          "peer_id"
         ],
         "properties": {
-          "peer_id": {
-            "type": "string",
-            "description": "Node Public key"
-          },
-          "peer_connected": {
-            "type": "boolean",
-            "description": "A boolean flag that is set to true if the peer is online"
-          },
           "state": {
             "type": "string",
             "enum": [
@@ -75,8 +67,16 @@
             "type": "short_channel_id",
             "description": "The short_channel_id (once locked in)"
           },
+          "peer_id": {
+            "type": "string",
+            "description": "Node Public key"
+          },
+          "peer_connected": {
+            "type": "boolean",
+            "description": "A boolean flag that is set to true if the peer is online"
+          },
           "channel_id": {
-            "type": "hex",
+            "type": "hash",
             "description": "The full channel_id",
             "minLength": 64,
             "maxLength": 64
@@ -164,17 +164,12 @@
             "description": "Who initiated the channel"
           },
           "closer": {
-            "FIXME": "deprecated_apis turns off null!",
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
             "enum": [
               "local",
-              "remote",
-              null
+              "remote"
             ],
-            "description": "Who initiated the channel close (`null` is deprecated!)"
+            "description": "Who initiated the channel close"
           },
           "features": {
             "type": "array",
@@ -182,7 +177,8 @@
               "type": "string",
               "enum": [
                 "option_static_remotekey",
-                "option_anchor_outputs"
+                "option_anchor_outputs",
+                "option_zeroconf"
               ],
               "description": "BOLT #9 features which apply to this channel"
             }
@@ -191,30 +187,39 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "local_msat",
-              "remote_msat",
-              "pushed_msat"
+              "local_funds_msat",
+              "remote_funds_msat"
             ],
             "properties": {
               "local_msat": {
                 "type": "msat",
-                "description": "Amount of channel we funded"
+                "description": "Amount of channel we funded (deprecated)"
               },
               "remote_msat": {
                 "type": "msat",
-                "description": "Amount of channel they funded"
+                "description": "Amount of channel they funded (deprecated)"
               },
               "pushed_msat": {
                 "type": "msat",
                 "description": "Amount pushed from opener to peer"
+              },
+              "local_funds_msat": {
+                "type": "msat",
+                "description": "Amount of channel we funded"
+              },
+              "remote_funds_msat": {
+                "type": "msat",
+                "description": "Amount of channel they funded"
+              },
+              "fee_paid_msat": {
+                "type": "msat",
+                "description": "Amount we paid peer at open"
+              },
+              "fee_rcvd_msat": {
+                "type": "msat",
+                "description": "Amount we were paid by peer at open"
               }
             }
-          },
-          "funding_allocation_msat": {
-            "deprecated": true
-          },
-          "funding_msat": {
-            "deprecated": true
           },
           "to_us_msat": {
             "type": "msat",
@@ -320,6 +325,20 @@
           },
           "htlc_minimum_msat": {
             "deprecated": true
+          },
+          "alias": {
+            "type": "object",
+            "required": [],
+            "properties": {
+              "local": {
+                "type": "short_channel_id",
+                "description": "An alias assigned by this node to this channel, used for outgoing payments"
+              },
+              "remote": {
+                "type": "short_channel_id",
+                "description": "An alias assigned by the remote node to this channel, usable in routehints and invoices"
+              }
+            }
           },
           "state_changes": {
             "type": "array",
@@ -482,7 +501,7 @@
                   "description": "Block this HTLC expires at"
                 },
                 "payment_hash": {
-                  "type": "hex",
+                  "type": "hash",
                   "description": "the hash of the payment_preimage which will prove payment",
                   "maxLength": 64,
                   "minLength": 64
@@ -524,6 +543,7 @@
                       "payment_hash": {},
                       "local_trimmed": {},
                       "status": {},
+                      "alias": {},
                       "peer_id": {},
                       "peer_connected": {},
                       "state": {
@@ -617,12 +637,11 @@
                 "funding_outnum": {},
                 "close_to": {},
                 "private": {},
+                "alias": {},
                 "opener": {},
                 "closer": {},
                 "features": {},
                 "funding": {},
-                "funding_allocation_msat": {},
-                "funding_msat": {},
                 "to_us_msat": {},
                 "min_to_us_msat": {},
                 "max_to_us_msat": {},
@@ -673,7 +692,6 @@
                 "last_feerate": {},
                 "next_feerate": {},
                 "inflight": {},
-                "last_tx_fee": {},
                 "last_tx_fee_msat": {},
                 "direction": {},
                 "close_to_addr": {
@@ -698,6 +716,7 @@
                 "state": {},
                 "peer_id": {},
                 "peer_connected": {},
+                "alias": {},
                 "scratch_txid": {},
                 "feerate": {},
                 "owner": {},
@@ -712,8 +731,6 @@
                 "closer": {},
                 "features": {},
                 "funding": {},
-                "funding_allocation_msat": {},
-                "funding_msat": {},
                 "to_us_msat": {},
                 "min_to_us_msat": {},
                 "max_to_us_msat": {},
@@ -765,9 +782,6 @@
                 "next_feerate": {},
                 "close_to_addr": {},
                 "direction": {},
-                "last_tx_fee": {
-                  "deprecated": true
-                },
                 "last_tx_fee_msat": {
                   "type": "msat",
                   "description": "fee attached to this the current tx"
@@ -787,9 +801,10 @@
                 "direction"
               ],
               "properties": {
-                "state": {},
+                "alias": {},
                 "peer_id": {},
                 "peer_connected": {},
+                "state": {},
                 "scratch_txid": {},
                 "feerate": {},
                 "owner": {},
@@ -804,8 +819,6 @@
                 "closer": {},
                 "features": {},
                 "funding": {},
-                "funding_allocation_msat": {},
-                "funding_msat": {},
                 "to_us_msat": {},
                 "min_to_us_msat": {},
                 "max_to_us_msat": {},
@@ -855,7 +868,6 @@
                 "initial_feerate": {},
                 "last_feerate": {},
                 "next_feerate": {},
-                "last_tx_fee": {},
                 "close_to_addr": {},
                 "last_tx_fee_msat": {},
                 "direction": {
@@ -885,6 +897,7 @@
                 "scratch_txid": {},
                 "feerate": {},
                 "owner": {},
+                "alias": {},
                 "short_channel_id": {},
                 "channel_id": {},
                 "funding_txid": {},
@@ -895,8 +908,6 @@
                 "closer": {},
                 "features": {},
                 "funding": {},
-                "funding_allocation_msat": {},
-                "funding_msat": {},
                 "to_us_msat": {},
                 "min_to_us_msat": {},
                 "max_to_us_msat": {},
@@ -910,6 +921,8 @@
                 "spendable_msat": {},
                 "receivable_msat": {},
                 "minimum_htlc_in_msat": {},
+                "minimum_htlc_out_msat": {},
+                "maximum_htlc_out_msat": {},
                 "spendable_msatoshi": {},
                 "receivable_msatoshi": {},
                 "their_to_self_delay": {},
@@ -942,7 +955,6 @@
                 "out_msatoshi_fulfilled": {},
                 "htlcs": {},
                 "inflight": {},
-                "last_tx_fee": {},
                 "close_to_addr": {},
                 "direction": {},
                 "last_tx_fee_msat": {},

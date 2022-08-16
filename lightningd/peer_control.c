@@ -2064,9 +2064,10 @@ static struct command_result *json_listpeerchannels(struct command *cmd,
 		peer = peer_by_id(cmd->ld, peer_id);
 		if (peer)
 			json_add_peerchannels(cmd->ld, response, peer);
-	} else
+	} else {
 		list_for_each(&cmd->ld->peers, peer, list)
 			json_add_peerchannels(cmd->ld, response, peer);
+	}
 
 	json_array_end(response);
 

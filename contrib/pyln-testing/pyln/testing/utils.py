@@ -1104,7 +1104,7 @@ class LightningNode(object):
         assert len(invoices) == 1 and invoices[0]['status'] == 'unpaid'
 
         # Pick first normal channel.
-        scid = [c['short_channel_id'] for c in only_one(self.rpc.listpeers(dst_id)['peers'])['channels']
+        scid = [c['short_channel_id'] for c in self.rpc.listpeerchannels(dst_id)['channels']
                 if c['state'] == 'CHANNELD_NORMAL'][0]
 
         routestep = {
