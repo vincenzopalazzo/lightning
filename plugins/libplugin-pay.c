@@ -3225,7 +3225,7 @@ static void direct_pay_override(struct payment *p) {
 /* Now that we have the listpeers result for the root payment, let's search
  * for a direct channel that is a) connected and b) in state normal. We will
  * check the capacity based on the channel_hints in the override. */
-static struct command_result *direct_pay_listpeers(struct command *cmd,
+static struct command_result *direct_pay_listpeerchanenls(struct command *cmd,
 						   const char *buffer,
 						   const jsmntok_t *toks,
 						   struct payment *p)
@@ -3273,8 +3273,8 @@ static void direct_pay_cb(struct direct_pay_data *d, struct payment *p)
 
 
 
-	req = jsonrpc_request_start(p->plugin, NULL, "listpeers",
-				    direct_pay_listpeers, direct_pay_listpeers,
+	req = jsonrpc_request_start(p->plugin, NULL, "listpeerchannels",
+				    direct_pay_listpeerchannels, direct_pay_listpeerchannels,
 				    p);
 	json_add_node_id(req->js, "id", p->destination);
 	send_outreq(p->plugin, req);

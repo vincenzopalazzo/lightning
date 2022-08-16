@@ -2795,9 +2795,9 @@ def setup_multihtlc_test(node_factory, bitcoind):
 
     # Make sure they're all in normal state.
     bitcoind.generate_block(1)
-    wait_for(lambda: all([only_one(l4.rpc.listpeerchannel(p["id"])['channels'])['state'] == 'CHANNELD_NORMAL'
+    wait_for(lambda: all([only_one(l4.rpc.listpeerchannels(p["id"])['channels'])['state'] == 'CHANNELD_NORMAL'
                           for p in l4.rpc.listpeers()['peers']]))
-    wait_for(lambda: all([only_one(l5.rpc.listpeerchannel(p["id"])['channels'])['state'] == 'CHANNELD_NORMAL'
+    wait_for(lambda: all([only_one(l5.rpc.listpeerchannels(p["id"])['channels'])['state'] == 'CHANNELD_NORMAL'
                           for p in l5.rpc.listpeers()['peers']]))
 
     # Balance them
