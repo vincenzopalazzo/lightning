@@ -400,6 +400,7 @@ struct listpeers_channel {
 	int *direction;
 	struct amount_msat total_msat;
 	struct amount_msat spendable_msat;
+	bool peer_connected;
 	/* TODO Add fields as we need them. */
 };
 
