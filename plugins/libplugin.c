@@ -1736,7 +1736,7 @@ void plugin_main(char *argv[],
 	tal_free(plugin);
 }
 
-static struct listpeers_channel *json_to_listpeers_channel(const tal_t *ctx,
+struct listpeers_channel *json_to_listpeers_channel(const tal_t *ctx,
 							   const char *buffer,
 							   const jsmntok_t *tok)
 {

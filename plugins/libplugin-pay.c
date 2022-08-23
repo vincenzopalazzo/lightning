@@ -2303,7 +2303,7 @@ local_channel_hints_listpeerchannels(struct command *cmd, const char *buffer,
 	assert(channels);
 
 	json_for_each_arr(j, channel, channels) {
-		/*FIXME: we can skip the channel is the peer is not connected in this case? */
+		/* FIXME: we can skip the channel if the peer is not connected in this case? */
 		peer_connected = json_get_member(buffer, channel, "peer_connected");
 		assert(peer_connected);
 
@@ -3216,20 +3216,26 @@ static void direct_pay_override(struct payment *p) {
 }
 
 /**
- * Take the JSON and use this to calculated
- */
-static struct listpeers_channel **json_listpeerchannels_to_listchannel(const tal_t *ctx, const char *buffer,
-								       const jsmntok_t *toks)
+* Take the JSON and use this to calculated
+*/
+static struct listpeers_channel **json_listpeerchannels_to_listchannel(
+	const tal_t *ctx, const char *buffer, const jsmntok_t *toks)
 {
-	struct listpeers_channel **channels, *channel;
-	const jsmntok_t *channels_tok;
+	struct listpeers_channel **channels;
+	const jsmntok_t *channels_tok, *channel_tok;
+	size_t i;
 
 	channels_tok = json_get_member(buffer, toks, "channels");
 	assert(channels_tok);
 
-	channel = tal(ctx, struct listpeers_channel);
-	channels = tal_arr(channel, struct listpeers_channel *, 0);
-	/* TODO: convert the JSON to a listpeer_channels */
+        channels = tal_arr(ctx, struct listpeers_channel *, 0);
+
+	json_for_each_arr(i, channel_tok, channels_tok) {
+		struct listpeers_channel *channel = json_to_listpeers_channel(ctx, buffer, channel_tok);
+		assert(channel);
+		tal_arr_expand(&channels, channel);
+	}
+
 	assert(channels);
 	return channels;
 }

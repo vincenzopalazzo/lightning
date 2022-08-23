@@ -416,6 +416,10 @@ struct listpeers_result {
 	struct listpeers_peer **peers;
 };
 
+struct listpeers_channel *json_to_listpeers_channel(const tal_t *ctx,
+						    const char *buffer,
+						    const jsmntok_t *tok);
+
 struct listpeers_result *json_to_listpeers_result(const tal_t *ctx,
 						  const char *buffer,
 						  const jsmntok_t *tok);
