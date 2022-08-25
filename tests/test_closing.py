@@ -7,11 +7,12 @@ from utils import (
     account_balance, first_channel_id, closing_fee, TEST_NETWORK,
     scriptpubkey_addr, calc_lease_fee, EXPERIMENTAL_FEATURES,
     check_utxos_channel, anchor_expected, check_coin_moves,
-    check_balance_snaps, mine_funding_to_announce, check_inspect_channel,
-    first_scid
+    trace_pay_command, first_scid, mine_funding_to_announce,
+    check_balance_snaps
 )
 
 import os
+import logging
 import queue
 import pytest
 import re
@@ -1175,7 +1176,7 @@ def test_penalty_htlc_tx_fulfill(node_factory, bitcoind, chainparams):
                                              opts=[{'disconnect': ['-WIRE_UPDATE_FULFILL_HTLC'],
                                                     'may_reconnect': True,
                                                     'dev-no-reconnect': None},
-                                                   {'plugin': [coin_mvt_plugin, balance_snaps],
+                                                    {'plugin': [coin_mvt_plugin, balance_snaps],
                                                     'disable-mpp': None,
                                                     'dev-no-reconnect': None,
                                                     'may_reconnect': True,
@@ -1192,8 +1193,9 @@ def test_penalty_htlc_tx_fulfill(node_factory, bitcoind, chainparams):
 
     # push some money so that 1 + 4 can both send htlcs
     inv = l2.rpc.invoice(10**9 // 2, '1', 'balancer')
-    l1.rpc.pay(inv['bolt11'])
-    l1.rpc.waitsendpay(inv['payment_hash'])
+    res = l1.rpc.pay(inv['bolt11'])
+    logging.info(f"Result pay command {res}")
+    l1.rpc.waitsendpay(inv['payment_hash'], partid=res["parts"])
 
     inv = l4.rpc.invoice(10**9 // 2, '1', 'balancer')
     l2.rpc.pay(inv['bolt11'])
