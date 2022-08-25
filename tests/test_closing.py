@@ -7,8 +7,8 @@ from utils import (
     account_balance, first_channel_id, closing_fee, TEST_NETWORK,
     scriptpubkey_addr, calc_lease_fee, EXPERIMENTAL_FEATURES,
     check_utxos_channel, anchor_expected, check_coin_moves,
-    trace_pay_command, first_scid, mine_funding_to_announce,
-    check_balance_snaps
+    check_balance_snaps, mine_funding_to_announce, check_inspect_channel,
+    first_scid
 )
 
 import os
