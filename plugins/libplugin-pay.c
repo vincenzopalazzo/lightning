@@ -3257,7 +3257,7 @@ static struct command_result *direct_pay_listpeerchannels(struct command *cmd,
         for (size_t i=0; i<tal_count(channels); i++) {
 		struct listpeers_channel *chan = channels[i];
 		if (!chan->peer_connected)
-			continue;
+			goto cont;
 
 		if (!streq(chan->state, "CHANNELD_NORMAL"))
 		    continue;
@@ -3274,6 +3274,7 @@ static struct command_result *direct_pay_listpeerchannels(struct command *cmd,
 			d->chan->dir = 0; /* Don't care. */
 		}
 	}
+ cont:
         direct_pay_override(p);
 	return command_still_pending(cmd);
 
