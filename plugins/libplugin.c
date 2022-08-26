@@ -1737,8 +1737,8 @@ void plugin_main(char *argv[],
 }
 
 struct listpeers_channel *json_to_listpeers_channel(const tal_t *ctx,
-							   const char *buffer,
-							   const jsmntok_t *tok)
+						    const char *buffer,
+						    const jsmntok_t *tok, bool *signle_peer)
 {
 	struct listpeers_channel *chan;
 	const jsmntok_t *privtok = json_get_member(buffer, tok, "private"),
