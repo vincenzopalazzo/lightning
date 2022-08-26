@@ -401,6 +401,7 @@ struct listpeers_channel {
 	struct amount_msat total_msat;
 	struct amount_msat spendable_msat;
 	bool peer_connected;
+	struct node_id *peer_id;
 	/* TODO Add fields as we need them. */
 };
 
@@ -418,7 +419,7 @@ struct listpeers_result {
 
 struct listpeers_channel *json_to_listpeers_channel(const tal_t *ctx,
 						    const char *buffer,
-						    const jsmntok_t *tok, bool *single_peer);
+						    const jsmntok_t *tok);
 
 struct listpeers_result *json_to_listpeers_result(const tal_t *ctx,
 						  const char *buffer,

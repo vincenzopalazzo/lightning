@@ -3219,21 +3219,29 @@ static void direct_pay_override(struct payment *p) {
 * Take the JSON and use this to calculated
 */
 static struct listpeers_channel **json_listpeerchannels_to_listchannel(
-	const tal_t *ctx, const char *buffer, const jsmntok_t *toks)
+	const tal_t *ctx, const char *buffer, const jsmntok_t *toks, bool *single_peer)
 {
 	struct listpeers_channel **channels;
 	const jsmntok_t *channels_tok, *channel_tok;
 	size_t i;
+	/* FIXME: there is a better way to check the channels if from a single peers? */
+	struct node_id *peer_id;
 
 	channels_tok = json_get_member(buffer, toks, "channels");
 	assert(channels_tok);
 
-        channels = tal_arr(ctx, struct listpeers_channel *, 0);
+    channels = tal_arr(ctx, struct listpeers_channel *, 0);
 
 	json_for_each_arr(i, channel_tok, channels_tok) {
 		struct listpeers_channel *channel = json_to_listpeers_channel(ctx, buffer, channel_tok);
 		assert(channel);
 		tal_arr_expand(&channels, channel);
+		if (!peer_id)
+			peer_id = channel->peer_id;
+		else {
+			if (peer_id != channel->peer_id)
+				single_peer = false;
+		}
 	}
 
 	assert(channels);
@@ -3248,7 +3256,8 @@ static struct command_result *direct_pay_listpeerchannels(struct command *cmd,
 						   const jsmntok_t *toks,
 						   struct payment *p)
 {
-	bool single_peer;
+	/* `listpeerchannels` lost the division of channels per peer, so we need to find this information. */
+	bool single_peer = true;
 	struct listpeers_channel **channels =
 		json_listpeerchannels_to_listchannel(tmpctx, buffer, toks, &single_peer);
 
