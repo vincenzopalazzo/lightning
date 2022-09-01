@@ -1078,10 +1078,10 @@ def test_forward(node_factory, bitcoind):
     # If they're at different block heights we can get spurious errors.
     sync_blockheight(bitcoind, [l1, l2, l3])
 
-    chanid1 = only_one(l1.rpc.getpeer(l2.info['id'])['channels'])['short_channel_id']
-    chanid2 = only_one(l2.rpc.getpeer(l3.info['id'])['channels'])['short_channel_id']
-    assert only_one(l2.rpc.getpeer(l1.info['id'])['channels'])['short_channel_id'] == chanid1
-    assert only_one(l3.rpc.getpeer(l2.info['id'])['channels'])['short_channel_id'] == chanid2
+    chanid1 = only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels'])['short_channel_id']
+    chanid2 = only_one(l2.rpc.listpeerchannels(l3.info['id'])['channels'])['short_channel_id']
+    assert only_one(l2.rpc.listpeerchannels(l1.info['id'])['channels'])['short_channel_id'] == chanid1
+    assert only_one(l3.rpc.listpeerchannels(l2.info['id'])['channels'])['short_channel_id'] == chanid2
 
     inv = l3.rpc.invoice(100000000, 'testpayment1', 'desc')
     rhash = inv['payment_hash']
@@ -1738,8 +1738,7 @@ def test_pay_retry(node_factory, bitcoind, executor, chainparams):
     def exhaust_channel(opener, peer, scid, already_spent=0):
         """Spend all available capacity (10^6 - 1%) of channel
         """
-        peer_node = opener.rpc.listpeers(peer.info['id'])['peers'][0]
-        chan = peer_node['channels'][0]
+        chan = only_one(opener.rpc.listpeerchannels(peer.info['id'])["channels"])
         maxpay = chan['spendable_msat']
         lbl = ''.join(random.choice(string.ascii_letters) for _ in range(20))
         inv = peer.rpc.invoice(maxpay, lbl, "exhaust_channel")

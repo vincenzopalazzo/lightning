@@ -110,11 +110,8 @@ def test_multifunding_v2_best_effort(node_factory, bitcoind):
         # open again, so multiple channels may remain
         # listed.
         def get_funded_channel_scid(n1, n2):
-            peers = n1.rpc.listpeers(n2.info['id'])['peers']
-            assert len(peers) == 1
-            peer = peers[0]
-            channels = peer['channels']
-            assert channels
+            channels = n1.rpc.listpeerchannels(n2.info['id'])['channels']
+            assert channels and len(channels) != 0
             for c in channels:
                 state = c['state']
                 if state in ('DUALOPEND_AWAITING_LOCKIN', 'CHANNELD_AWAITING_LOCKIN', 'CHANNELD_NORMAL'):
@@ -1282,8 +1279,8 @@ def test_zeroconf_mindepth(bitcoind, node_factory):
     bitcoind.generate_block(4)  # Confirm on the l2 side.
     l1.daemon.wait_for_log(r'peer_out WIRE_CHANNEL_READY')
 
-    wait_for(lambda: l1.rpc.listpeers()['peers'][0]['channels'][0]['state'] == "CHANNELD_NORMAL")
-    wait_for(lambda: l2.rpc.listpeers()['peers'][0]['channels'][0]['state'] == "CHANNELD_NORMAL")
+    wait_for(lambda: only_one(l1.rpc.listpeerchannels()['channels'])['state'] == "CHANNELD_NORMAL")
+    wait_for(lambda: only_one(l2.rpc.listpeerchannels()['channels'])['state'] == "CHANNELD_NORMAL")
 
 
 def test_zeroconf_open(bitcoind, node_factory):
@@ -1326,8 +1323,8 @@ def test_zeroconf_open(bitcoind, node_factory):
         r'Peer told us that they\'ll use alias=[0-9x]+ for this channel',
     ])
 
-    wait_for(lambda: l1.rpc.listpeers()['peers'][0]['channels'][0]['state'] == 'CHANNELD_NORMAL')
-    wait_for(lambda: l2.rpc.listpeers()['peers'][0]['channels'][0]['state'] == 'CHANNELD_NORMAL')
+    wait_for(lambda: only_one(l1.rpc.listpeerchannels()['channels'])['state'] == 'CHANNELD_NORMAL')
+    wait_for(lambda: only_one(l2.rpc.listpeerchannels()['channels'])['state'] == 'CHANNELD_NORMAL')
     wait_for(lambda: l2.rpc.listincoming()['incoming'] != [])
 
     inv = l2.rpc.invoice(10**8, 'lbl', 'desc')['bolt11']
@@ -1335,7 +1332,7 @@ def test_zeroconf_open(bitcoind, node_factory):
     pprint(details)
     assert('routes' in details and len(details['routes']) == 1)
     hop = details['routes'][0][0]  # First (and only) hop of hint 0
-    l1alias = l1.rpc.listpeers()['peers'][0]['channels'][0]['alias']['local']
+    l1alias = only_one(l1.rpc.listpeerchannels()['channels'])['alias']['local']
     assert(hop['pubkey'] == l1.info['id'])  # l1 is the entrypoint
     assert(hop['short_channel_id'] == l1alias)  # Alias has to make sense to entrypoint
     l1.rpc.pay(inv)
@@ -1380,8 +1377,8 @@ def test_zeroconf_public(bitcoind, node_factory, chainparams):
     l1.daemon.wait_for_log(r'Got WIRE_HSMD_CUPDATE_SIG_REQ')
     l2.daemon.wait_for_log(r'Got WIRE_HSMD_CUPDATE_SIG_REQ')
 
-    l1chan = l1.rpc.listpeers()['peers'][0]['channels'][0]
-    l2chan = l2.rpc.listpeers()['peers'][0]['channels'][0]
+    l1chan = only_one(l1.rpc.listpeerchannels()['channels'])
+    l2chan = only_one(l2.rpc.listpeerchannels()['channels'])
     channel_id = l1chan['channel_id']
 
     # We have no confirmation yet, so no `short_channel_id`
@@ -1412,8 +1409,8 @@ def test_zeroconf_public(bitcoind, node_factory, chainparams):
     l1.daemon.wait_for_log(r'Funding tx [a-f0-9]{64} depth 1 of 0')
     l2.daemon.wait_for_log(r'Funding tx [a-f0-9]{64} depth 1 of 0')
 
-    l1chan = l1.rpc.listpeers()['peers'][0]['channels'][0]
-    l2chan = l2.rpc.listpeers()['peers'][0]['channels'][0]
+    l1chan = only_one(l1.rpc.listpeerchannels()['channels'])
+    l2chan = only_one(l2.rpc.listpeerchannels()['channels'])
     assert('short_channel_id' in l1chan)
     assert('short_channel_id' in l2chan)
 
@@ -1640,9 +1637,9 @@ def test_scid_alias_private(node_factory, bitcoind):
     l2.rpc.fundchannel(l3.info['id'], 'all', announce=False)
 
     bitcoind.generate_block(1, wait_for_mempool=1)
-    wait_for(lambda: only_one(only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels'])['state'] == 'CHANNELD_NORMAL')
+    wait_for(lambda: only_one(l2.rpc.listpeerchannels(l3.info['id'])['channels'])['state'] == 'CHANNELD_NORMAL')
 
-    chan = only_one(only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels'])
+    chan = only_one(l2.rpc.listpeerchannels(l3.info['id'])['channels'])
     assert chan['private'] is True
     scid23 = chan['short_channel_id']
     alias23 = chan['alias']['local']
@@ -1654,7 +1651,7 @@ def test_scid_alias_private(node_factory, bitcoind):
     bitcoind.generate_block(6, wait_for_mempool=1)
     wait_for(lambda: len(l3.rpc.listchannels(source=l1.info['id'])['channels']) == 1)
 
-    chan = only_one(only_one(l1.rpc.listpeers(l2.info['id'])['peers'])['channels'])
+    chan = only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels'])
     assert chan['private'] is False
     scid12 = chan['short_channel_id']
 

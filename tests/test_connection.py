@@ -579,7 +579,7 @@ def test_disconnect_half_signed(node_factory):
 
     # Peer remembers, opener doesn't.
     wait_for(lambda: l1.rpc.listpeers(l2.info['id'])['peers'] == [])
-    assert len(only_one(l2.rpc.listpeers(l1.info['id'])['peers'])['channels']) == 1
+    assert len(l2.rpc.listpeerchannels(l1.info['id'])['channels']) == 1
 
 
 @pytest.mark.developer
@@ -970,8 +970,8 @@ def test_shutdown_awaiting_lockin(node_factory, bitcoind):
     bitcoind.generate_block(100)
 
     # Won't disconnect!
-    wait_for(lambda: only_one(l1.rpc.listpeers()['peers'])['channels'] == [])
-    wait_for(lambda: only_one(l2.rpc.listpeers()['peers'])['channels'] == [])
+    wait_for(lambda: l1.rpc.listpeerchannels()['channels'] == [])
+    wait_for(lambda: l2.rpc.listpeerchannels()['channels'] == [])
 
 
 @pytest.mark.openchannel('v1')
@@ -2137,10 +2137,7 @@ def test_multifunding_best_effort(node_factory, bitcoind):
         # open again, so multiple channels may remain
         # listed.
         def get_funded_channel_scid(n1, n2):
-            peers = n1.rpc.listpeers(n2.info['id'])['peers']
-            assert len(peers) == 1
-            peer = peers[0]
-            channels = peer['channels']
+            channels = n1.rpc.listpeerchannels(n2.info['id'])['channels']
             assert channels
             for c in channels:
                 state = c['state']
@@ -2601,7 +2598,7 @@ def test_forget_channel(node_factory):
 
     # Forcing should work
     l1.rpc.dev_forget_channel(l2.info['id'], True)
-    wait_for(lambda: only_one(l1.rpc.listpeers()['peers'])['channels'] == [])
+    wait_for(lambda: l1.rpc.listpeerchannels()['channels'] == [])
 
     # And restarting should keep that peer forgotten
     l1.restart()
@@ -2661,8 +2658,8 @@ def test_peerinfo(node_factory, bitcoind):
     bitcoind.generate_block(100, wait_for_mempool=1)
     l1.daemon.wait_for_log('onchaind complete, forgetting peer')
     l2.daemon.wait_for_log('onchaind complete, forgetting peer')
-    assert only_one(l1.rpc.listpeers(l2.info['id'])['peers'])['channels'] == []
-    assert only_one(l2.rpc.listpeers(l1.info['id'])['peers'])['channels'] == []
+    assert l1.rpc.listpeerchannels(l2.info['id'])['channels'] == []
+    assert l2.rpc.listpeerchannels(l1.info['id'])['channels'] == []
 
     # The only channel was closed, everybody should have forgotten the nodes
     assert l1.rpc.listnodes()['nodes'] == []
@@ -2748,7 +2745,7 @@ def test_fundee_forget_funding_tx_unconfirmed(node_factory, bitcoind):
     l2.daemon.wait_for_log(r'Forgetting channel: It has been {}\d blocks'.format(str(blocks)[:-1]))
 
     # fundee will also forget, but not disconnect from peer.
-    wait_for(lambda: only_one(l2.rpc.listpeers(l1.info['id'])['peers'])['channels'] == [])
+    wait_for(lambda: l2.rpc.listpeerchannels(l1.info['id'])['channels'] == [])
 
 
 @pytest.mark.developer("needs --dev-max-funding-unconfirmed-blocks")
@@ -3997,16 +3994,16 @@ def test_multichan(node_factory, executor, bitcoind):
     bitcoind.generate_block(1)
     sync_blockheight(bitcoind, [l2])
     l2.rpc.fundchannel(l3.info['id'], '0.01001btc')
-    assert(len(only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels']) == 2)
-    assert(len(only_one(l3.rpc.listpeers(l2.info['id'])['peers'])['channels']) == 2)
+    assert(len(l2.rpc.listpeerchannels(l3.info['id'])['channels']) == 2)
+    assert(len(l3.rpc.listpeerchannels(l2.info['id'])['channels']) == 2)
 
     bitcoind.generate_block(1, wait_for_mempool=1)
     # Make sure new channel is also CHANNELD_NORMAL
-    wait_for(lambda: [c['state'] for c in only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels']] == ["CHANNELD_NORMAL", "CHANNELD_NORMAL"])
+    wait_for(lambda: [c['state'] for c in l2.rpc.listpeerchannels(l3.info['id'])['channels']] == ["CHANNELD_NORMAL", "CHANNELD_NORMAL"])
 
     # Dance around to get the *other* scid.
-    wait_for(lambda: all(['short_channel_id' in c for c in l3.rpc.listpeers()['peers'][0]['channels']]))
-    scids = [c['short_channel_id'] for c in l3.rpc.listpeers()['peers'][0]['channels']]
+    wait_for(lambda: all(['short_channel_id' in c for c in l3.rpc.listpeerchannels()['channels']]))
+    scids = [c['short_channel_id'] for c in l3.rpc.listpeerchannels()['channels']]
     assert len(scids) == 2
 
     if scids[0] == scid23a:
@@ -4025,13 +4022,13 @@ def test_multichan(node_factory, executor, bitcoind):
               'id': l3.info['id'],
               'delay': 5,
               'channel': scid23a}]
-    before = only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels']
+    before = l2.rpc.listpeerchannels(l3.info['id'])['channels']
     inv = l3.rpc.invoice(100000000, "invoice", "invoice")
     l1.rpc.sendpay(route, inv['payment_hash'], payment_secret=inv['payment_secret'])
     l1.rpc.waitsendpay(inv['payment_hash'])
     # Wait until HTLCs fully settled
-    wait_for(lambda: [c['htlcs'] for c in only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels']] == [[], []])
-    after = only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels']
+    wait_for(lambda: [c['htlcs'] for c in l2.rpc.listpeerchannels(l3.info['id'])['channels']] == [[], []])
+    after = l2.rpc.listpeerchannels(l3.info['id'])['channels']
 
     if before[0]['short_channel_id'] == scid23a:
         chan23a_idx = 0
@@ -4050,14 +4047,14 @@ def test_multichan(node_factory, executor, bitcoind):
     assert before[chan23a_idx]['to_us_msat'] == after[chan23a_idx]['to_us_msat']
     assert before[chan23b_idx]['to_us_msat'] != after[chan23b_idx]['to_us_msat']
 
-    before = only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels']
+    before = l2.rpc.listpeerchannels(l3.info['id'])['channels']
     route[1]['channel'] = scid23b
     inv = l3.rpc.invoice(100000000, "invoice2", "invoice2")
     l1.rpc.sendpay(route, inv['payment_hash'], payment_secret=inv['payment_secret'])
     l1.rpc.waitsendpay(inv['payment_hash'])
     # Wait until HTLCs fully settled
-    wait_for(lambda: [c['htlcs'] for c in only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels']] == [[], []])
-    after = only_one(l2.rpc.listpeers(l3.info['id'])['peers'])['channels']
+    wait_for(lambda: [c['htlcs'] for c in l2.rpc.listpeerchannels(l3.info['id'])['channels']] == [[], []])
+    after = l2.rpc.listpeerchannels(l3.info['id'])['channels']
 
     # Now the first channel is larger!
     assert before[chan23a_idx]['to_us_msat'] != after[chan23a_idx]['to_us_msat']
