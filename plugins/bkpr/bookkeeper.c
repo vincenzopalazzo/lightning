@@ -1301,7 +1301,7 @@ struct event_info {
 };
 
 static struct command_result *
-listpeers_done(struct command *cmd, const char *buf,
+listpeerchannels_done(struct command *cmd, const char *buf,
 	       const jsmntok_t *result, struct event_info *info)
 {
 	struct acct_balance **balances, *bal;
@@ -1543,7 +1543,7 @@ parse_and_log_chain_move(struct command *cmd,
 
 		plugin_log(cmd->plugin, LOG_DBG,
 			   "channel event received but no open for channel %s."
-			   " Calling `listpeers` to fetch missing info",
+			   " Calling `listpeerchannls` to fetch missing info",
 			   acct->name);
 
 		info = tal(cmd, struct event_info);
@@ -1553,8 +1553,8 @@ parse_and_log_chain_move(struct command *cmd,
 				       acct : orig_acct);
 
 		req = jsonrpc_request_start(cmd->plugin, cmd,
-					    "listpeers",
-					    listpeers_done,
+					    "listpeerchannels",
+					    listpeerchannels_done,
 					    log_error,
 					    info);
 		/* FIXME: use the peer_id to reduce work here */
