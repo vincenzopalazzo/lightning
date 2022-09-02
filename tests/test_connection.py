@@ -271,9 +271,9 @@ def test_balance(node_factory):
     p1 = only_one(l1.rpc.listpeerchannels(peer_id=l2.info['id'])['channels'])
     p2 = only_one(l2.rpc.listpeerchannels(l1.info['id'])['channels'])
     assert p1['msatoshi_to_us'] == 10**6 * 1000
-    assert p1['msatoshi_total'] == 10**6 * 1000
+    assert p1['total_msat'] == 10**6 * 1000
     assert p2['msatoshi_to_us'] == 0
-    assert p2['msatoshi_total'] == 10**6 * 1000
+    assert p2['total_msat'] == 10**6 * 1000
 
 
 @pytest.mark.openchannel('v1')
@@ -1615,7 +1615,7 @@ def test_funding_close_upfront(node_factory, bitcoind):
 
         for node in [l1, l2]:
             channel = node.rpc.listpeerchannels()['channels'][-1]
-            assert amount * 1000 == channel['msatoshi_total']
+            assert amount * 1000 == channel['total_msat']
 
     def _close(src, dst, addr=None):
         """Close the channel from src to dst, with the specified address.
@@ -1716,7 +1716,7 @@ def test_funding_external_wallet(node_factory, bitcoind):
     for node in [l1, l2]:
         node.daemon.wait_for_log(r'State changed from CHANNELD_AWAITING_LOCKIN to CHANNELD_NORMAL')
         channel = node.rpc.listpeerchannels()['channels'][0]
-        assert amount * 1000 == channel['msatoshi_total']
+        assert amount * 1000 == channel['total_msat']
 
     # Test that we don't crash if peer disconnects after fundchannel_start
     l2.connect(l3)
