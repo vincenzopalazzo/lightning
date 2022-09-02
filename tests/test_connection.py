@@ -270,9 +270,9 @@ def test_balance(node_factory):
     l1, l2 = node_factory.line_graph(2, fundchannel=True)
     p1 = only_one(l1.rpc.listpeerchannels(peer_id=l2.info['id'])['channels'])
     p2 = only_one(l2.rpc.listpeerchannels(l1.info['id'])['channels'])
-    assert p1['msatoshi_to_us'] == 10**6 * 1000
+    assert p1['to_us_msat'] == 10**6 * 1000
     assert p1['total_msat'] == 10**6 * 1000
-    assert p2['msatoshi_to_us'] == 0
+    assert p2['to_us_msat'] == 0
     assert p2['total_msat'] == 10**6 * 1000
 
 
@@ -2264,7 +2264,7 @@ def test_channel_persistence(node_factory, bitcoind, executor):
     wait_for(lambda: len(l2.rpc.listpeers()['peers']) == 1)
 
     # Wait for the restored HTLC to finish
-    wait_for(lambda: only_one(l1.rpc.listpeerchannels()['channels'])['msatoshi_to_us'] == 99990000)
+    wait_for(lambda: only_one(l1.rpc.listpeerchannels()['channels'])['to_us_msat'] == 99990000)
 
     wait_for(lambda: len([p for p in l1.rpc.listpeers()['peers'] if p['connected']]))
     wait_for(lambda: len([p for p in l2.rpc.listpeers()['peers'] if p['connected']]))
@@ -2274,12 +2274,12 @@ def test_channel_persistence(node_factory, bitcoind, executor):
 
     # L1 doesn't actually update to_us_msat until it receives
     # revoke_and_ack from L2, which can take a little bit.
-    wait_for(lambda: only_one(l1.rpc.listpeerchannels()['channels'])['msatoshi_to_us'] == 99980000)
-    assert only_one(l2.rpc.listpeerchannels()['channels'])['msatoshi_to_us'] == 20000
+    wait_for(lambda: only_one(l1.rpc.listpeerchannels()['channels'])['to_us_msat'] == 99980000)
+    assert only_one(l2.rpc.listpeerchannels()['channels'])['to_us_msat'] == 20000
 
     # Finally restart l1, and make sure it remembers
     l1.restart()
-    assert only_one(l1.rpc.listpeerchannels()['channels'])['msatoshi_to_us'] == 99980000
+    assert only_one(l1.rpc.listpeerchannels()['channels'])['to_us_msat'] == 99980000
 
     # Keep l1 from sending its onchain tx
     def censoring_sendrawtx(r):
@@ -2400,7 +2400,7 @@ def test_fee_limits(node_factory, bitcoind):
     l1.daemon.wait_for_log('Peer transient failure in CHANNELD_NORMAL: channeld WARNING: .*: update_fee 253 outside range 1875-75000')
 
     # Closes, but does not error.  Make sure it's noted in their status though.
-    assert 'update_fee 253 outside range 1875-75000' in only_one(l1.rpc.listpeerchaannels(l2.info['id'])['channels'])['status'][0]
+    assert 'update_fee 253 outside range 1875-75000' in only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels'])['status'][0]
     assert 'update_fee 253 outside range 1875-75000' in only_one(l2.rpc.listpeerchannels(l1.info['id'])['channels'])['status'][0]
 
     # Make l2 accept those fees, and it should recover.

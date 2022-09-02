@@ -621,12 +621,12 @@ def test_sendpay(node_factory):
     assert invoice_unpaid(l2, 'testpayment2')
 
     # FIXME: test paying via another node, should fail to pay twice.
-    p1 = l1.rpc.getpeer(l2.info['id'], 'info')
-    p2 = l2.rpc.getpeer(l1.info['id'], 'info')
-    assert only_one(p1['channels'])['to_us_msat'] == 10**6 * 1000
-    assert only_one(p1['channels'])['total_msat'] == 10**6 * 1000
-    assert only_one(p2['channels'])['to_us_msat'] == 0
-    assert only_one(p2['channels'])['total_msat'] == 10**6 * 1000
+    c1 = only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels'])
+    c2 = only_one(l2.rpc.listpeerchannels(l1.info['id'])['channels'])
+    assert c1['to_us_msat'] == 10**6 * 1000
+    assert c1['total_msat'] == 10**6 * 1000
+    assert c2['to_us_msat'] == 0
+    assert c2['total_msat'] == 10**6 * 1000
 
     # This works.
     before = int(time.time())
@@ -647,13 +647,13 @@ def test_sendpay(node_factory):
 
     # Balances should reflect it.
     def check_balances():
-        p1 = l1.rpc.getpeer(l2.info['id'], 'info')
-        p2 = l2.rpc.getpeer(l1.info['id'], 'info')
+        c1 = only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels'])
+        c2 = only_one(l2.rpc.listpeerchannels(l1.info['id'])['channels'])
         return (
-            only_one(p1['channels'])['to_us_msat'] == 10**6 * 1000 - amt
-            and only_one(p1['channels'])['total_msat'] == 10**6 * 1000
-            and only_one(p2['channels'])['to_us_msat'] == amt
-            and only_one(p2['channels'])['total_msat'] == 10**6 * 1000
+            c1['to_us_msat'] == 10**6 * 1000 - amt
+            and c1['total_msat'] == 10**6 * 1000
+            and c2['to_us_msat'] == amt
+            and c2['total_msat'] == 10**6 * 1000
         )
     wait_for(check_balances)
 
@@ -3610,7 +3610,7 @@ def test_keysend_routehint(node_factory):
     routehints = [
         [
             {
-                'scid': only_one(l3.rpc.listpeerchannels()['channels'])['short_channel_id'],
+                'scid': only_one(l3.rpc.listpeerchannels(l2.info['id'])['channels'])['short_channel_id'],
                 'id': l2.info['id'],
                 'feebase': '1msat',
                 'feeprop': 10,
