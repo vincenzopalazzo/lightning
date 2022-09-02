@@ -4158,7 +4158,7 @@ def test_no_reconnect_awating_unilateral(node_factory, bitcoind):
     # Close immediately.
     l1.rpc.close(l2.info['id'], 1)
 
-    wait_for(lambda: only_one(only_one(l1.rpc.listpeers(l2.info['id'])['peers'])['channels'])['state'] == 'AWAITING_UNILATERAL')
+    wait_for(lambda: only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels'])['state'] == 'AWAITING_UNILATERAL')
 
     # After switching to AWAITING_UNILATERAL it will *not* try to reconnect.
     l1.daemon.wait_for_log("State changed from CHANNELD_SHUTTING_DOWN to AWAITING_UNILATERAL")

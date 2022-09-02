@@ -680,7 +680,7 @@ def test_openchannel_hook(node_factory, bitcoind):
     # Close it.
     txid = l1.rpc.close(l2.info['id'])['txid']
     bitcoind.generate_block(1, txid)
-    wait_for(lambda: [c['state'] for c in l1.rpc.listpeerchannels(l2.info['id']['channels'])] == ['ONCHAIN'])
+    wait_for(lambda: [c['state'] for c in l1.rpc.listpeerchannels(l2.info['id'])['channels']] == ['ONCHAIN'])
 
     # Odd amount: fails
     l1.connect(l2)
@@ -1120,8 +1120,8 @@ def test_htlc_accepted_hook_direct_restart(node_factory, executor):
 
     # Check that the status mentions the HTLC being held
     l2.rpc.listpeers()
-    peers = l2.rpc.listpeers()['peers']
-    htlc_status = peers[0]['channels'][0]['htlcs'][0].get('status', None)
+    channel = only_one(l2.rpc.listpeerchannels()['channels'])
+    htlc_status = channel['htlcs'][0].get('status', None)
     assert htlc_status == "Waiting for the htlc_accepted hook of plugin hold_htlcs.py"
 
     needle = l2.daemon.logsearch_start
@@ -2017,7 +2017,7 @@ def test_coin_movement_notices(node_factory, bitcoind, chainparams):
 
     # restart to test index
     l2.restart()
-    wait_for(lambda: all(c['state'] == 'CHANNELD_NORMAL' for c in l2.rpc.listpeerchannels()))
+    wait_for(lambda: all(c['state'] == 'CHANNELD_NORMAL' for c in l2.rpc.listpeerchannels()["channels"]))
 
     # close the channels down
     chan1 = l2.get_channel_scid(l1)

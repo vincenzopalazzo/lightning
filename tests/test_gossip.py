@@ -710,8 +710,8 @@ def test_gossip_query_channel_range(node_factory, bitcoind, chainparams):
     # Make sure l4 has received all the gossip.
     l4.daemon.wait_for_logs(['Received node_announcement for node ' + n.info['id'] for n in (l1, l2, l3)])
 
-    scid12 = only_one(l1.rpc.listpeers(l2.info['id'])['peers'])['channels'][0]['short_channel_id']
-    scid23 = only_one(l3.rpc.listpeers(l2.info['id'])['peers'])['channels'][0]['short_channel_id']
+    scid12 = l1.rpc.listpeerchannels(l2.info['id'])['channels'][0]['short_channel_id']
+    scid23 = l3.rpc.listpeerchannels(l2.info['id'])['channels'][0]['short_channel_id']
     block12 = int(scid12.split('x')[0])
     block23 = int(scid23.split('x')[0])
 

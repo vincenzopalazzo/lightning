@@ -2033,7 +2033,7 @@ static void json_add_peerchannels(struct lightningd *ld,
 				  struct peer *peer)
 {
 	struct channel *channel;
-	json_add_uncommitted_channel(response, peer->uncommitted_channel);
+	json_add_uncommitted_channel(response, peer);
 
         list_for_each(&peer->channels, channel, list) {
 	        if (channel_unsaved(channel))
@@ -2052,6 +2052,7 @@ static struct command_result *json_listpeerchannels(struct command *cmd,
         struct peer *peer;
 	struct json_stream *response;
 
+	/* FIME: filter by status */
 	if (!param(cmd, buffer, params,
 		   p_opt("id", param_node_id, &peer_id),
 		   NULL))

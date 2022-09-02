@@ -1033,11 +1033,10 @@ class LightningNode(object):
     def get_channel_id(self, other):
         """Get the channel_id for the channel to the other node.
         """
-        peers = self.rpc.listpeers(other.info['id'])['peers']
-        if not peers or 'channels' not in peers[0]:
+        channels = self.rpc.listpeerchannels(other.info['id'])['channels']
+        if len(channels) == 0:
             return None
-        channel = peers[0]['channels'][0]
-        return channel['channel_id']
+        return channels[0]['channel_id']
 
     def is_channel_active(self, chanid):
         channels = self.rpc.listchannels(chanid)['channels']
