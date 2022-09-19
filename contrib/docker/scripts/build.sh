@@ -23,8 +23,8 @@ export LIGHTNINGD_POSTGRES_NO_VACUUM=1
 
 pip3 install --upgrade pip
 pip3 install --user poetry
-poetry export --dev --without-hashes -o requirements.txt
-pip3 install -r requirements.txt
+poetry config virtualenvs.create false --local
+poetry install --no-interaction --no-ansi --no-dev --no-root
 
 git clone https://github.com/lightningnetwork/lightning-rfc.git ../lightning-rfc
 git submodule update --init --recursive
