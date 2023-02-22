@@ -1,5 +1,6 @@
 #ifndef LIGHTNING_LIGHTNINGD_JSONRPC_H
 #define LIGHTNING_LIGHTNINGD_JSONRPC_H
+#include "ccan/compiler/compiler.h"
 #include "config.h"
 #include <ccan/list/list.h>
 #include <common/autodata.h>
@@ -17,6 +18,10 @@ enum command_mode {
 	/* Check parameters, nothing else. */
 	CMD_CHECK
 };
+
+// FIXME(vincenzopalazzo): The filtering architecture
+// desearve an own file.
+struct jsonrpc_paginator { };
 
 /* Context for a command (from JSON, but might outlive the connection!). */
 /* FIXME: move definition into jsonrpc.c */
@@ -43,6 +48,8 @@ struct command {
 	struct json_stream *json_stream;
 	/* Optional output field filter. */
 	struct json_filter *filter;
+	/* Option filtering option */
+	struct jsonrpc_paginator *paginator;
 };
 
 /**
@@ -223,6 +230,7 @@ struct jsonrpc_notification *jsonrpc_notification_start(const tal_t *ctx, const 
  */
 void jsonrpc_notification_end(struct jsonrpc_notification *n);
 
+
 /**
  * start a JSONRPC request; id_prefix is non-NULL if this was triggered by
  * another JSONRPC request.
@@ -270,6 +278,15 @@ struct jsonrpc_request *jsonrpc_request_start_(
     void *response_cb_arg);
 
 void jsonrpc_request_end(struct jsonrpc_request *request);
+
+#define PAGINATOR(callback)                                                             \
+	static struct command_result *callback##_paginator(struct command *cmd,       \
+	                                     const char *buffer,                        \
+	                                     const jsmntok_t *obj UNNEEDED,             \
+	                                     const jsmntok_t *params)                   \
+	{                                                                               \
+	   return callback(cmd, buffer, obj, params);                                   \
+        }
 
 AUTODATA_TYPE(json_command, struct json_command);
 
