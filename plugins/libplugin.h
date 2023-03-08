@@ -14,6 +14,7 @@
 #include <common/htlc.h>
 #include <common/json_command.h>
 #include <common/jsonrpc_errors.h>
+#include <common/jsonrpc_paginator.h>
 #include <common/node_id.h>
 #include <common/status_levels.h>
 #include <common/utils.h>
@@ -57,6 +58,8 @@ struct command {
 	struct plugin *plugin;
 	/* Optional output field filter. */
 	struct json_filter *filter;
+	/* Option filtering option */
+	struct jsonrpc_paginator *paginator;
 };
 
 /* Create an array of these, one for each command you support. */
@@ -484,5 +487,23 @@ const jsmntok_t *jsonrpc_request_sync(const tal_t *ctx, struct plugin *plugin,
 				      const char *method,
 				      const struct json_out *params TAKES,
 				      const char **resp);
+
+#define PAGINATOR(callback)						                \
+	static struct command_result* callback##_paginator(struct command *cmd,         \
+	                                     const char *buffer,                        \
+	                                     const jsmntok_t *params)                   \
+	{                                                                               \
+		const char **batch;						        \
+		u64 *limit, *offset;                                                    \
+                if (!param(cmd, buffer, params,				                \
+	             p_opt("batch", param_arr_str, &batch),                             \
+                     p_opt("limit", param_u64, &limit),                                 \
+		     p_opt("offset", param_u64, &offset),                               \
+	             p_opt_any(),                                                       \
+		     NULL))                                                             \
+		     return command_param_failed();                                     \
+		cmd->paginator = new_paginator(cmd, batch, limit, offset);              \
+                return callback(cmd, buffer, params);				        \
+        }
 
 #endif /* LIGHTNING_PLUGINS_LIBPLUGIN_H */

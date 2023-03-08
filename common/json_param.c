@@ -1,4 +1,7 @@
+#include "ccan/tal/tal.h"
 #include "config.h"
+#include "jsmn.h"
+#include <assert.h>
 #include <bitcoin/address.h>
 #include <bitcoin/base58.h>
 #include <bitcoin/feerate.h>
@@ -14,6 +17,8 @@
 #include <common/json_command.h>
 #include <common/json_param.h>
 #include <common/route.h>
+#include <stdbool.h>
+#include <stddef.h>
 
 struct param {
 	const char *name;
@@ -352,6 +357,14 @@ bool param(struct command *cmd, const char *buffer,
 		if (streq(name, "")) {
 			allow_extra = true;
 			continue;
+		} else if (streq(name, "paginator")) {
+			struct command_result *result;
+			if ((result = cbx(cmd, name, buffer, NULL, arg)))
+				return result;
+			/* we allow extra but we already made a check that are
+			 * paginator keys, so this should be safe! */
+			allow_extra = true;
+			continue;
 		}
 		if (!param_add(&params, name, style, cbx, arg)) {
 			/* We really do ignore this return! */
@@ -438,6 +451,37 @@ struct command_result *param_string(struct command *cmd, const char *name,
 			   tok->end - tok->start);
 	return NULL;
 }
+
+struct command_result *param_arr_str(struct command *cmd, const char *name,
+				   const char *buffer, const jsmntok_t *tok,
+				   const char ***arr)
+{
+	const jsmntok_t *curr;
+	size_t i;
+
+	if (tok->type != JSMN_ARRAY)
+		return command_fail_badparam(cmd, name, buffer, tok,
+					     "schould be an array of string");
+
+	*arr = tal_arr(cmd, const char *, 0);
+	json_for_each_arr(i, curr, tok) {
+		struct json_escape *esc;
+		const char *str;
+
+		if (curr->type != JSMN_STRING)
+			return command_fail_badparam(cmd, name, buffer, tok,
+						     "the item of the array should be a string");
+
+		esc = json_escape_string_(cmd, buffer + curr->start,
+			   curr->end - curr->start);
+		str = json_escape_unescape(cmd, esc);
+		tal_arr_expand(arr, str);
+	}
+
+	return NULL;
+}
+
+
 
 struct command_result *param_ignore(struct command *cmd, const char *name,
 				    const char *buffer, const jsmntok_t *tok,
@@ -1066,3 +1110,24 @@ struct command_result *param_pubkey(struct command *cmd, const char *name,
 				     "should be a compressed pubkey");
 }
 
+struct command_result *param_paginator(struct command *cmd, const char *name,
+				       const char *buffer, const jsmntok_t *tok)
+{
+	/*
+	const jsmntok_t *tok_tmp;
+
+	tok_tmp = json_get_member(buffer, tok, "batch");
+	if (tok_tmp)
+		return NULL;
+	tok_tmp = json_get_member(buffer, tok, "offset");
+	if (tok_tmp)
+		return NULL;
+
+	tok_tmp = json_get_member(buffer, tok, "limit");
+	if (tok_tmp)
+		return NULL;
+
+	return command_fail_badparam(cmd, name, buffer, tok,
+	"paginator request format in the wrong way!");*/
+	return NULL;
+}

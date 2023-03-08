@@ -1,4 +1,9 @@
+#include "ccan/list/list.h"
+#include "ccan/strmap/strmap.h"
+#include "ccan/tal/tal.h"
+#include "common/node_id.h"
 #include "config.h"
+#include <assert.h>
 #include <ccan/array_size/array_size.h>
 #include <ccan/crypto/siphash24/siphash24.h>
 #include <ccan/htable/htable_type.h>
@@ -15,6 +20,8 @@
 #include <common/wireaddr.h>
 #include <errno.h>
 #include <plugins/libplugin.h>
+#include <stddef.h>
+#include <string.h>
 
 /* Access via get_gossmap() */
 static struct gossmap *global_gossmap;
@@ -408,15 +415,44 @@ static struct command_result *json_listchannels(struct command *cmd,
 	return send_outreq(cmd->plugin, req);
 }
 
-static void json_add_node(struct json_stream *js,
+static bool node_in_paginator(struct command *cmd, struct node_id *node_id)
+{
+	struct jsonrpc_paginator *p;
+
+	p = cmd->paginator;
+	if (p) {
+		if (p->batch) {
+			const char *target_id;
+			const char *id;
+			size_t i;
+
+			target_id = node_id_to_hexstr(cmd, node_id);
+			/* FIXME: can we use the hash map to speed up the seach */
+			for (i = 0; i < tal_count(p->batch); i++) {
+				id = p->batch[i];
+				if (strcmp(id, target_id) == 0)
+					return true;
+				plugin_log(cmd->plugin, LOG_DBG, "not match %s != %s", target_id, id);
+			}
+		}
+		return false;
+	}
+	tal_free(p);
+	return true;
+}
+
+static void json_add_node(struct command *cmd,
+			  struct json_stream *js,
 			  const struct gossmap *gossmap,
 			  const struct gossmap_node *n)
 {
 	struct node_id node_id;
 	u8 *nannounce;
 
-	json_object_start(js, NULL);
 	gossmap_node_get_id(gossmap, n, &node_id);
+	if (!node_in_paginator(cmd, &node_id))
+		return;
+	json_object_start(js, NULL);
 	json_add_node_id(js, "nodeid", &node_id);
 	nannounce = gossmap_node_get_announce(tmpctx, gossmap, n);
 	if (nannounce) {
@@ -489,6 +525,7 @@ static struct command_result *json_listnodes(struct command *cmd,
 
 	if (!param(cmd, buffer, params,
 		   p_opt("id", param_node_id, &id),
+		   p_paginator(),
 		   NULL))
 		return command_param_failed();
 
@@ -498,12 +535,12 @@ static struct command_result *json_listnodes(struct command *cmd,
 	if (id) {
 		struct gossmap_node *n = gossmap_find_node(gossmap, id);
 		if (n)
-			json_add_node(js, gossmap, n);
+			json_add_node(cmd, js, gossmap, n);
 	} else {
 		for (struct gossmap_node *n = gossmap_first_node(gossmap);
 		     n;
 		     n = gossmap_next_node(gossmap, n)) {
-			json_add_node(js, gossmap, n);
+			json_add_node(cmd, js, gossmap, n);
 		}
 	}
 	json_array_end(js);
@@ -633,6 +670,8 @@ static const char *init(struct plugin *p,
 	return NULL;
 }
 
+PAGINATOR(json_listnodes);
+
 static const struct plugin_command commands[] = {
 	{
 		"getroute",
@@ -659,7 +698,7 @@ static const struct plugin_command commands[] = {
 		"network",
 		"List all known nodes in the network",
 		"Show node {id} (or all known nods, if not specified)",
-		json_listnodes,
+		json_listnodes_paginator,
 	},
 	{
 		"listincoming",

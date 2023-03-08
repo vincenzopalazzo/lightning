@@ -2,9 +2,11 @@
 #ifndef LIGHTNING_COMMON_JSON_PARAM_H
 #define LIGHTNING_COMMON_JSON_PARAM_H
 #include "config.h"
+#include <assert.h>
 #include <ccan/short_types/short_types.h>
 #include <common/bolt11.h>
 #include <common/json_parse.h>
+#include <common/jsonrpc_paginator.h>
 #include <common/lease_rates.h>
 #include <common/node_id.h>
 #include <common/sphinx.h>
@@ -49,6 +51,10 @@ struct command_result;
 bool param(struct command *cmd, const char *buffer,
 	   const jsmntok_t params[], ...) LAST_ARG_NULL;
 
+bool param_partial_par(struct command *cmd, const char *buffer,
+		       const jsmntok_t tokens[], ...) LAST_ARG_NULL;
+
+
 /*
  * The callback signature.
  *
@@ -79,6 +85,10 @@ enum param_style {
 	PARAM_OPTIONAL,
 	PARAM_OPTIONAL_WITH_DEFAULT,
 };
+
+/** Check if this is a valid paginator input */
+struct command_result *param_paginator(struct command *cmd, const char *name,
+				       const char *buffer, const jsmntok_t *tok);
 
 /*
  * Add a required parameter.
@@ -139,6 +149,9 @@ enum param_style {
 /* Special flag for 'check' which allows any parameters. */
 #define p_opt_any() "", PARAM_OPTIONAL, NULL, NULL
 
+#define p_paginator() "paginator", PARAM_OPTIONAL, param_paginator, NULL
+
+
 /* All the helper routines. */
 struct amount_msat;
 struct amount_sat;
@@ -180,6 +193,11 @@ struct command_result *param_escaped_string(struct command *cmd,
 struct command_result *param_string(struct command *cmd, const char *name,
 				    const char * buffer, const jsmntok_t *tok,
 				    const char **str);
+
+/* Extract an array of strings */
+struct command_result *param_arr_str(struct command *cmd, const char *name,
+				   const char *buffer, const jsmntok_t *tok,
+				   const char ***arr);
 
 /* Extract a label. It is either an escaped string or a number. */
 struct command_result *param_label(struct command *cmd, const char *name,
@@ -340,5 +358,4 @@ struct command_result *param_lease_hex(struct command *cmd,
 struct command_result *param_pubkey(struct command *cmd, const char *name,
 				    const char *buffer, const jsmntok_t *tok,
 				    struct pubkey **pubkey);
-
 #endif /* LIGHTNING_COMMON_JSON_PARAM_H */
