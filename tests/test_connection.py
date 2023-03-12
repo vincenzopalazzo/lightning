@@ -1,3 +1,4 @@
+from socks import logging
 from fixtures import *  # noqa: F401,F403
 from fixtures import TEST_NETWORK
 from ephemeral_port_reserve import reserve  # type: ignore
@@ -4377,3 +4378,34 @@ def test_peer_disconnected_reflected_in_channel_state(node_factory):
 
     wait_for(lambda: only_one(l1.rpc.listpeers(l2.info['id'])['peers'])['connected'] is False)
     wait_for(lambda: only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels'])['peer_connected'] is False)
+
+
+def test_fundchannel_with_connected_peer(node_factory):
+    """
+    Reprodice the issue https://github.com/ElementsProject/lightning/issues/6059
+    """
+    l1, l2 = node_factory.get_nodes(2)
+
+    addr = l1.rpc.newaddr()['bech32']
+
+    def has_funds_on_addr(addr):
+        """Check if the given address has funds in the internal wallet.
+        """
+        outs = l1.rpc.listfunds()['outputs']
+        addrs = [o['address'] for o in outs]
+        return addr in addrs
+
+    # We should not have funds on that address yet, we just generated it.
+    assert(not has_funds_on_addr(addr))
+
+    l1.bitcoin.rpc.sendtoaddress(addr, (800000 + 1000000) / 10**8)
+    l1.bitcoin.generate_block(1)
+
+    # Now we should.
+    wait_for(lambda: has_funds_on_addr(addr))
+
+    # Connect l1 to l2
+    l2_id = l2.rpc.getinfo()["id"]
+    l2_addr = l2.rpc.getinfo()["binding"][0]
+    l1.rpc.connect(l2_id, l2_addr["address"], l2_addr["port"])
+    l1.rpc.fundchannel(l2_id, 40000)

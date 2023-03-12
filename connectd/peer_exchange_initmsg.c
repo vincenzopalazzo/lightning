@@ -52,7 +52,7 @@ static struct io_plan *peer_init_received(struct io_conn *conn,
 
 	if (!msg)
 		return io_close(conn);
-
+	status_peer_info(&peer->id, "Reading Init msg");
 	status_peer_io(LOG_IO_IN, &peer->id, msg);
 
 	/* BOLT #1:
@@ -269,6 +269,7 @@ struct io_plan *peer_exchange_initmsg(struct io_conn *conn,
 				our_features->bits[GLOBAL_INIT_FEATURE],
 				our_features->bits[INIT_FEATURE],
 				tlvs);
+	status_peer_info(&peer->id, "Sending init msg");
 	status_peer_io(LOG_IO_OUT, &peer->id, peer->msg);
 	peer->msg = cryptomsg_encrypt_msg(peer, &peer->cs, take(peer->msg));
 
