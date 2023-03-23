@@ -72,6 +72,8 @@ const char *json_scan(const tal_t *ctx UNNEEDED,
 bool json_to_channel_id(const char *buffer UNNEEDED, const jsmntok_t *tok UNNEEDED,
 			struct channel_id *cid UNNEEDED)
 { fprintf(stderr, "json_to_channel_id called!\n"); abort(); }
+bool json_to_strarr(const tal_t *ctx UNNEEDED, const char *buffer UNNEEDED, const jsmntok_t *tok UNNEEDED, const char ***arr UNNEEDED)
+{ fprintf(stderr, "json_to_strarr called"); abort();}
 /* Generated stub for json_to_millionths */
 bool json_to_millionths(const char *buffer UNNEEDED, const jsmntok_t *tok UNNEEDED,
 			u64 *millionths UNNEEDED)

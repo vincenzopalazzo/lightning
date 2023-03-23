@@ -88,7 +88,8 @@ enum param_style {
 
 /** Check if this is a valid paginator input */
 struct command_result *param_paginator(struct command *cmd, const char *name,
-				       const char *buffer, const jsmntok_t *tok);
+				       const char *buffer, const jsmntok_t *tok,
+	                               struct jsonrpc_paginator **paginator);
 
 /*
  * Add a required parameter.
@@ -149,7 +150,16 @@ struct command_result *param_paginator(struct command *cmd, const char *name,
 /* Special flag for 'check' which allows any parameters. */
 #define p_opt_any() "", PARAM_OPTIONAL, NULL, NULL
 
-#define p_paginator() "paginator", PARAM_OPTIONAL, param_paginator, NULL
+#define p_paginator(arg)                                           \
+	            "paginator",				   \
+	            PARAM_OPTIONAL,				   \
+		    (param_cbx)(param_paginator),                  \
+	            ({ *arg = NULL;			           \
+		    (arg) + 0*sizeof((param_paginator)((struct command *)NULL, \
+		                  (const char *)NULL,              \
+				  (const char *)NULL,              \
+				  (const jsmntok_t *)NULL,         \
+				  (arg)) == (struct command_result *)NULL); })
 
 
 /* All the helper routines. */

@@ -1,7 +1,3 @@
-#include "ccan/list/list.h"
-#include "ccan/strmap/strmap.h"
-#include "ccan/tal/tal.h"
-#include "common/node_id.h"
 #include "config.h"
 #include <assert.h>
 #include <ccan/array_size/array_size.h>
@@ -431,13 +427,13 @@ static bool node_in_paginator(struct command *cmd, struct node_id *node_id)
 			for (i = 0; i < tal_count(p->batch); i++) {
 				id = p->batch[i];
 				if (strcmp(id, target_id) == 0)
-					return true;
+					goto done;
 				plugin_log(cmd->plugin, LOG_DBG, "not match %s != %s", target_id, id);
 			}
 		}
 		return false;
 	}
-	tal_free(p);
+done:
 	return true;
 }
 
@@ -525,7 +521,7 @@ static struct command_result *json_listnodes(struct command *cmd,
 
 	if (!param(cmd, buffer, params,
 		   p_opt("id", param_node_id, &id),
-		   p_paginator(),
+		   p_paginator(&cmd->paginator),
 		   NULL))
 		return command_param_failed();
 
@@ -670,8 +666,6 @@ static const char *init(struct plugin *p,
 	return NULL;
 }
 
-PAGINATOR(json_listnodes);
-
 static const struct plugin_command commands[] = {
 	{
 		"getroute",
@@ -698,7 +692,7 @@ static const struct plugin_command commands[] = {
 		"network",
 		"List all known nodes in the network",
 		"Show node {id} (or all known nods, if not specified)",
-		json_listnodes_paginator,
+		json_listnodes,
 	},
 	{
 		"listincoming",

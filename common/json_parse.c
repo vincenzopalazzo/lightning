@@ -711,3 +711,28 @@ json_tok_channel_id(const char *buffer, const jsmntok_t *tok,
 	return hex_decode(buffer + tok->start, tok->end - tok->start,
 			  cid, sizeof(*cid));
 }
+
+bool json_to_strarr(const tal_t *ctx, const char *buffer,
+		     const jsmntok_t *tok, const char ***arr)
+{
+	const jsmntok_t *curr;
+	size_t i;
+
+	if (tok->type != JSMN_ARRAY)
+		return false;
+
+	*arr = tal_arr(ctx, const char *, 0);
+	json_for_each_arr(i, curr, tok) {
+		struct json_escape *esc;
+		const char *str;
+
+		if (curr->type != JSMN_STRING)
+			return false;
+		esc = json_escape_string_(ctx, buffer + curr->start,
+			   curr->end - curr->start);
+		str = json_escape_unescape(ctx, esc);
+		tal_arr_expand(arr, str);
+	}
+
+	return NULL;
+}

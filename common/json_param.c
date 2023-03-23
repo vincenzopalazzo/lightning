@@ -1,6 +1,4 @@
-#include "ccan/tal/tal.h"
 #include "config.h"
-#include "jsmn.h"
 #include <assert.h>
 #include <bitcoin/address.h>
 #include <bitcoin/base58.h>
@@ -19,6 +17,8 @@
 #include <common/route.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
 struct param {
 	const char *name;
@@ -342,7 +342,7 @@ const char *param_subcommand(struct command *cmd, const char *buffer,
 }
 
 bool param(struct command *cmd, const char *buffer,
-	   const jsmntok_t tokens[], ...)
+	   const jsmntok_t *tokens, ...)
 {
 	struct param *params = tal_arr(tmpctx, struct param, 0);
 	const char *name;
@@ -357,15 +357,8 @@ bool param(struct command *cmd, const char *buffer,
 		if (streq(name, "")) {
 			allow_extra = true;
 			continue;
-		} else if (streq(name, "paginator")) {
-			struct command_result *result;
-			if ((result = cbx(cmd, name, buffer, NULL, arg)))
-				return result;
-			/* we allow extra but we already made a check that are
-			 * paginator keys, so this should be safe! */
-			allow_extra = true;
-			continue;
 		}
+
 		if (!param_add(&params, name, style, cbx, arg)) {
 			/* We really do ignore this return! */
 			struct command_result *ignore;
@@ -1111,23 +1104,33 @@ struct command_result *param_pubkey(struct command *cmd, const char *name,
 }
 
 struct command_result *param_paginator(struct command *cmd, const char *name,
-				       const char *buffer, const jsmntok_t *tok)
+				       const char *buffer, const jsmntok_t *tok,
+				       struct jsonrpc_paginator **paginator)
 {
-	/*
-	const jsmntok_t *tok_tmp;
+	const jsmntok_t *batch_tok, *offset_tok, *limit_tok;
+	u64 *limit, *offset;
+	const char **batch;
 
-	tok_tmp = json_get_member(buffer, tok, "batch");
-	if (tok_tmp)
-		return NULL;
-	tok_tmp = json_get_member(buffer, tok, "offset");
-	if (tok_tmp)
-		return NULL;
+	batch = NULL;
+	batch_tok = json_get_member(buffer, tok, "batch");
+	if (batch_tok)
+		json_to_strarr(cmd, buffer, batch_tok, &batch);
 
-	tok_tmp = json_get_member(buffer, tok, "limit");
-	if (tok_tmp)
-		return NULL;
+	offset = tal(cmd, uint64_t);
+	offset_tok = json_get_member(buffer, tok, "offset");
+	if (offset_tok)
+		json_to_u64(buffer, offset_tok, offset);
 
+	limit = tal(cmd, uint64_t);
+	limit_tok = json_get_member(buffer, tok, "limit");
+	if (limit_tok)
+		json_to_u64(buffer, limit_tok, limit);
+
+	if (batch || (limit && offset)) {
+		*paginator = new_paginator(cmd, batch, limit, offset);
+		assert(paginator);
+		return NULL;
+	}
 	return command_fail_badparam(cmd, name, buffer, tok,
-	"paginator request format in the wrong way!");*/
-	return NULL;
+				     "paginator request format in the wrong way!");
 }

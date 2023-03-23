@@ -487,23 +487,4 @@ const jsmntok_t *jsonrpc_request_sync(const tal_t *ctx, struct plugin *plugin,
 				      const char *method,
 				      const struct json_out *params TAKES,
 				      const char **resp);
-
-#define PAGINATOR(callback)						                \
-	static struct command_result* callback##_paginator(struct command *cmd,         \
-	                                     const char *buffer,                        \
-	                                     const jsmntok_t *params)                   \
-	{                                                                               \
-		const char **batch;						        \
-		u64 *limit, *offset;                                                    \
-                if (!param(cmd, buffer, params,				                \
-	             p_opt("batch", param_arr_str, &batch),                             \
-                     p_opt("limit", param_u64, &limit),                                 \
-		     p_opt("offset", param_u64, &offset),                               \
-	             p_opt_any(),                                                       \
-		     NULL))                                                             \
-		     return command_param_failed();                                     \
-		cmd->paginator = new_paginator(cmd, batch, limit, offset);              \
-                return callback(cmd, buffer, params);				        \
-        }
-
 #endif /* LIGHTNING_PLUGINS_LIBPLUGIN_H */
