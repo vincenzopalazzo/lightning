@@ -133,6 +133,9 @@ bool json_to_txid(const char *buffer UNNEEDED, const jsmntok_t *tok UNNEEDED,
 bool json_to_u16(const char *buffer UNNEEDED, const jsmntok_t *tok UNNEEDED,
                  uint16_t *num UNNEEDED)
 { fprintf(stderr, "json_to_u16 called!\n"); abort(); }
+bool json_to_strarr(const tal_t *ctx UNNEEDED, const char *buffer UNNEEDED,
+		    const jsmntok_t *tok UNNEEDED, const char ***arr UNNEEDED)
+{ fprintf(stderr, "json_to_strarr called"); abort();}
 /* Generated stub for json_tok_bin_from_hex */
 u8 *json_tok_bin_from_hex(const tal_t *ctx UNNEEDED, const char *buffer UNNEEDED, const jsmntok_t *tok UNNEEDED)
 { fprintf(stderr, "json_tok_bin_from_hex called!\n"); abort(); }

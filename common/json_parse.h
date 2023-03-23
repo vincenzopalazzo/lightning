@@ -124,6 +124,9 @@ json_to_blinded_path(const tal_t *ctx, const char *buffer, const jsmntok_t *tok)
 bool json_tok_channel_id(const char *buffer, const jsmntok_t *tok,
 			 struct channel_id *cid);
 
+bool json_to_strarr(const tal_t *ctx, const char *buffer,
+		     const jsmntok_t *tok, const char ***arr);
+
 /* Guide is % for a token: each must be followed by JSON_SCAN().
  * Returns NULL on error (asserts() on bad guide). */
 const char *json_scan(const tal_t *ctx,

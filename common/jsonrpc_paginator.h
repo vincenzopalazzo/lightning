@@ -2,11 +2,9 @@
  * Welcome in this wanderful experience of writing
  * a paginator for the core lightning JSON RPC 2.0 in C!
  *
- *
  * I will try to keep the code as simple as possible,
  * so if you had any dout on what I'm trying to do, blame me
  * that I was not able to do my job.
- *
  *
  * In short, the goal of this paginator is offer a struct
  * that it is used to grep the paginator information by
@@ -18,16 +16,14 @@
  * if the paginator will be enbaled on the listnodes, the
  * call will be
  *
- * cli | rest | grpc -> json_paginator_listnodes -> json_listnodes + struct jsonrpc_paginator -> sjon response { .... }
+ * cli | rest | grpc -> json_paginator_listnodes -> json_listnodes + struct jsonrpc_paginator -> jon response { .... }
  *
  * Done, this should be all!
- *
- *
- * Now let see how this is implemented.
- * */
+ */
 #ifndef JSONRPC_PAGINATOR_H
 #define JSONRPC_PAGINATOR_H
 
+#include <assert.h>
 #include <ccan/tal/tal.h>
 #include <ccan/short_types/short_types.h>
 
@@ -50,7 +46,8 @@
 struct jsonrpc_paginator {
 	/** reall usefult for access to gossip map */
 	const char **batch;
-	/** query the database */
+	/** query the database, for more complexy
+	 * query please use the sql plugins */
 	const u64 *offset;
 	const u64 *limit;
 	/* FIXME: more smarter one? like sort_by = "json key"
@@ -58,17 +55,18 @@ struct jsonrpc_paginator {
 	 * maybe we had already somethings in the sql plugin? */
 };
 
-/** new_paginator - helper function to create a new paginator from a list of parameter.
+/**
+ * new_paginator - helper function to create a new paginator from a list of parameter.
  * This is simple enought to be avoided, but write simple code inside the C macros
  * is frustating, so let use this insteand.
  *
  * BTW: I love C Macros, really!
- * */
+ */
 static inline struct jsonrpc_paginator *new_paginator(const tal_t *ctx, const char **batch,
 					      const u64 *limit, const u64 *offset)
 {
 	struct jsonrpc_paginator *paginator = NULL;
-	if (batch || limit || offset) {
+	if (batch || (limit && offset)) {
 		paginator = tal(ctx, struct jsonrpc_paginator);
 		paginator->batch = batch;
 		paginator->limit = limit;
@@ -77,5 +75,4 @@ static inline struct jsonrpc_paginator *new_paginator(const tal_t *ctx, const ch
 	}
 	return NULL;
 }
-
 #endif // JSONRPC_PAGINATOR_H
