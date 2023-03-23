@@ -6,6 +6,7 @@
 #include <common/onion_encode.h>
 #include <common/penalty_base.h>
 #include <common/utxo.h>
+#include <common/jsonrpc_paginator.h>
 #include <common/wallet.h>
 #include <lightningd/bitcoind.h>
 #include <lightningd/log.h>
@@ -1359,7 +1360,8 @@ const struct forwarding *wallet_forwarded_payments_get(struct wallet *w,
 						       const tal_t *ctx,
 						       enum forward_status state,
 						       const struct short_channel_id *chan_in,
-						       const struct short_channel_id *chan_out);
+						       const struct short_channel_id *chan_out,
+	                                               const struct jsonrpc_paginator *paginator);
 
 /**
  * Delete a particular forward entry

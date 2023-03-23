@@ -4528,7 +4528,8 @@ const struct forwarding *wallet_forwarded_payments_get(struct wallet *w,
 						       const tal_t *ctx,
 						       enum forward_status status,
 						       const struct short_channel_id *chan_in,
-						       const struct short_channel_id *chan_out)
+						       const struct short_channel_id *chan_out,
+	                                               const struct jsonrpc_paginator *paginator)
 {
 	struct forwarding *results = tal_arr(ctx, struct forwarding, 0);
 	size_t count = 0;
@@ -4537,24 +4538,46 @@ const struct forwarding *wallet_forwarded_payments_get(struct wallet *w,
 	// placeholder for any parameter, the value doesn't matter because it's discarded by sql
 	const int any = -1;
 
-	stmt = db_prepare_v2(
-	    w->db,
-	    SQL("SELECT"
-		"  state"
-		", in_msatoshi"
-		", out_msatoshi"
-		", in_channel_scid"
-		", out_channel_scid"
-		", in_htlc_id"
-		", out_htlc_id"
-		", received_time"
-		", resolved_time"
-		", failcode "
-		", forward_style "
-		"FROM forwards "
-		"WHERE (1 = ? OR state = ?) AND "
-		"(1 = ? OR in_channel_scid = ?) AND "
-		"(1 = ? OR out_channel_scid = ?)"));
+	if (paginator) {
+		stmt = db_prepare_v2(
+			w->db,
+			SQL("SELECT"
+			    "  state"
+			    ", in_msatoshi"
+			    ", out_msatoshi"
+			    ", in_channel_scid"
+			    ", out_channel_scid"
+			    ", in_htlc_id"
+			    ", out_htlc_id"
+			    ", received_time"
+			    ", resolved_time"
+			    ", failcode "
+			    ", forward_style "
+			    "FROM forwards "
+			    "WHERE (1 = ? OR state = ?) AND "
+			    "(1 = ? OR in_channel_scid = ?) AND "
+			    "(1 = ? OR out_channel_scid = ?)"
+			    "LIMIT ? OFFSET ?"));
+	} else {
+		stmt = db_prepare_v2(
+			w->db,
+			SQL("SELECT"
+			    "  state"
+			    ", in_msatoshi"
+			    ", out_msatoshi"
+			    ", in_channel_scid"
+			    ", out_channel_scid"
+			    ", in_htlc_id"
+			    ", out_htlc_id"
+			    ", received_time"
+			    ", resolved_time"
+			    ", failcode "
+			    ", forward_style "
+			    "FROM forwards "
+			    "WHERE (1 = ? OR state = ?) AND "
+			    "(1 = ? OR in_channel_scid = ?) AND "
+			    "(1 = ? OR out_channel_scid = ?)"));
+	}
 
 	if (status == FORWARD_ANY) {
 		// any status
@@ -4584,6 +4607,12 @@ const struct forwarding *wallet_forwarded_payments_get(struct wallet *w,
 		// any out_channel
 		db_bind_int(stmt, 4, 1);
 		db_bind_int(stmt, 5, any);
+	}
+
+	if (paginator) {
+		assert(paginator->limit && paginator->offset);
+		db_bind_int(stmt, 6, *paginator->limit);
+		db_bind_int(stmt, 7, *paginator->offset);
 	}
 
 	db_query_prepared(stmt);

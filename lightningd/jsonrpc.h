@@ -45,7 +45,7 @@ struct command {
 	/* Optional output field filter. */
 	struct json_filter *filter;
 	/* Option filtering option */
-	const struct jsonrpc_paginator *paginator;
+	struct jsonrpc_paginator *paginator;
 };
 
 /**

@@ -411,32 +411,6 @@ static struct command_result *json_listchannels(struct command *cmd,
 	return send_outreq(cmd->plugin, req);
 }
 
-static bool node_in_paginator(struct command *cmd, struct node_id *node_id)
-{
-	struct jsonrpc_paginator *p;
-
-	p = cmd->paginator;
-	if (p) {
-		if (p->batch) {
-			const char *target_id;
-			const char *id;
-			size_t i;
-
-			target_id = node_id_to_hexstr(cmd, node_id);
-			/* FIXME: can we use the hash map to speed up the seach */
-			for (i = 0; i < tal_count(p->batch); i++) {
-				id = p->batch[i];
-				if (strcmp(id, target_id) == 0)
-					goto done;
-				plugin_log(cmd->plugin, LOG_DBG, "not match %s != %s", target_id, id);
-			}
-		}
-		return false;
-	}
-done:
-	return true;
-}
-
 static void json_add_node(struct command *cmd,
 			  struct json_stream *js,
 			  const struct gossmap *gossmap,
@@ -446,8 +420,6 @@ static void json_add_node(struct command *cmd,
 	u8 *nannounce;
 
 	gossmap_node_get_id(gossmap, n, &node_id);
-	if (!node_in_paginator(cmd, &node_id))
-		return;
 	json_object_start(js, NULL);
 	json_add_node_id(js, "nodeid", &node_id);
 	nannounce = gossmap_node_get_announce(tmpctx, gossmap, n);
@@ -532,6 +504,17 @@ static struct command_result *json_listnodes(struct command *cmd,
 		struct gossmap_node *n = gossmap_find_node(gossmap, id);
 		if (n)
 			json_add_node(cmd, js, gossmap, n);
+	} else if (cmd->paginator) {
+		const char **batch = cmd->paginator->batch;
+		for (size_t i = 0; i < tal_count(batch); i++) {
+			const char *idstr = batch[i];
+			id = tal(tmpctx, struct node_id);
+;			node_id_from_hexstr(idstr, sizeof(idstr), id);
+			struct gossmap_node *n = gossmap_find_node(gossmap, id);
+			if (n)
+				json_add_node(cmd, js, gossmap, n);
+			tal_free(id);
+		}
 	} else {
 		for (struct gossmap_node *n = gossmap_first_node(gossmap);
 		     n;
