@@ -1,6 +1,5 @@
 #include "config.h"
-  #include <lightningd/log.h>
-
+#include <lightningd/log.h>
 #include "test_utils.h"
 #include <ccan/tal/str/str.h>
 #include <db/common.h>
@@ -620,7 +619,11 @@ struct command_result *param_bool(struct command *cmd UNNEEDED, const char *name
 				  const char *buffer UNNEEDED, const jsmntok_t *tok UNNEEDED,
 				  bool **b UNNEEDED)
 { fprintf(stderr, "param_bool called!\n"); abort(); }
-/* Generated stub for param_channel_id */
+/* Generated stub for param_bool */
+struct command_result *param_paginator(struct command *cmd UNNEEDED, const char *name UNNEEDED,
+				  const char *buffer UNNEEDED, const jsmntok_t *tok UNNEEDED,
+				  struct jsonrpc_paginator **b UNNEEDED)
+{ fprintf(stderr, "param_paginator called!\n"); abort(); }/* Generated stub for param_channel_id */
 struct command_result *param_channel_id(struct command *cmd UNNEEDED,
 					const char *name UNNEEDED,
 					const char *buffer UNNEEDED,
