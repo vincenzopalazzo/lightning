@@ -42,6 +42,7 @@
  * @offset: a position (u64) that determines the number of element (in SQL row)
  * returned by request.
  * @limit: a position (u64) that give the number of element in [0,..,offset - 1] to skip skip.
+ * @reverse: a boolean that reverse the order of the result.
  */
 struct jsonrpc_paginator {
 	/** reall usefult for access to gossip map */
@@ -50,6 +51,7 @@ struct jsonrpc_paginator {
 	 * query please use the sql plugins */
 	const u64 *offset;
 	const u64 *limit;
+	const bool *reverse;
 	/* FIXME: more smarter one? like sort_by = "json key"
 	 * but this required to have a mapping between json_keys and sql keys
 	 * maybe we had already somethings in the sql plugin? */
@@ -62,8 +64,9 @@ struct jsonrpc_paginator {
  *
  * BTW: I love C Macros, really!
  */
-static inline struct jsonrpc_paginator *new_paginator(const tal_t *ctx, const char **batch,
-					      const u64 *limit, const u64 *offset)
+static inline struct jsonrpc_paginator *
+new_paginator(const tal_t *ctx, const char **batch, const u64 *limit,
+	      const u64 *offset, const bool *reverse)
 {
 	struct jsonrpc_paginator *paginator = NULL;
 	if (batch || (limit && offset)) {
@@ -71,6 +74,7 @@ static inline struct jsonrpc_paginator *new_paginator(const tal_t *ctx, const ch
 		paginator->batch = batch;
 		paginator->limit = limit;
 		paginator->offset = offset;
+		paginator->reverse = reverse;
 		return paginator;
 	}
 	return NULL;

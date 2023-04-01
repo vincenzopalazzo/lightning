@@ -1107,8 +1107,9 @@ struct command_result *param_paginator(struct command *cmd, const char *name,
 				       const char *buffer, const jsmntok_t *tok,
 				       struct jsonrpc_paginator **paginator)
 {
-	const jsmntok_t *batch_tok, *offset_tok, *limit_tok;
+	const jsmntok_t *batch_tok, *offset_tok, *limit_tok, *reverse_tok;
 	u64 *limit, *offset;
+	bool *reverse;
 	const char **batch;
 
 	batch = NULL;
@@ -1126,8 +1127,13 @@ struct command_result *param_paginator(struct command *cmd, const char *name,
 	if (limit_tok)
 		json_to_u64(buffer, limit_tok, limit);
 
+	reverse = tal(cmd, bool);
+	reverse_tok = json_get_member(buffer, tok, "reverse");
+	if (reverse_tok)
+		json_to_bool(buffer, reverse_tok, reverse);
+
 	if (batch || (limit && offset)) {
-		*paginator = new_paginator(cmd, batch, limit, offset);
+		*paginator = new_paginator(cmd, batch, limit, offset, reverse);
 		assert(paginator);
 		return NULL;
 	}
