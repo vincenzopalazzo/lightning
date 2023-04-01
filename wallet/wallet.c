@@ -1,4 +1,5 @@
 #include "config.h"
+#include <stdio.h>
 #include <bitcoin/script.h>
 #include <ccan/array_size/array_size.h>
 #include <ccan/cast/cast.h>
@@ -4538,8 +4539,8 @@ const struct forwarding *wallet_forwarded_payments_get(struct wallet *w,
 	// placeholder for any parameter, the value doesn't matter because it's discarded by sql
 	const int any = -1;
 
-	if (paginator) {
-		stmt = db_prepare_v2(
+	if (paginator && *paginator->reverse == true) {
+        stmt = db_prepare_v2(
 			w->db,
 			SQL("SELECT"
 			    "  state"
@@ -4554,11 +4555,31 @@ const struct forwarding *wallet_forwarded_payments_get(struct wallet *w,
 			    ", failcode "
 			    ", forward_style "
 			    "FROM forwards "
+				"ORDER BY ROWID DESC "
 			    "WHERE (1 = ? OR state = ?) AND "
 			    "(1 = ? OR in_channel_scid = ?) AND "
-			    "(1 = ? OR out_channel_scid = ?)"
-			    "LIMIT ? OFFSET ?"));
-	} else {
+			    "(1 = ? OR out_channel_scid = ?)"));
+	} else if (paginator && *paginator->reverse == false) {
+		stmt = db_prepare_v2( 
+			w->db,
+			SQL("SELECT"
+				"  state"
+				", in_msatoshi"
+				", out_msatoshi"
+				", in_channel_scid"
+				", out_channel_scid"
+				", in_htlc_id"
+				", out_htlc_id"
+				", received_time"
+				", resolved_time"
+				", failcode "
+				", forward_style "
+				"FROM forwards "
+				"WHERE (1 = ? OR state = ?) AND "
+				"(1 = ? OR in_channel_scid = ?) AND "
+				"(1 = ? OR out_channel_scid = ?)"));
+		}
+	else {
 		stmt = db_prepare_v2(
 			w->db,
 			SQL("SELECT"
