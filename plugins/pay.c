@@ -1253,6 +1253,65 @@ static struct command_result *json_pay(struct command *cmd,
 	return send_outreq(cmd->plugin, req);
 }
 
+static struct command_result *json_selfpay(struct command *cmd,
+					   const char *buf,
+					   const jsmntok_t *params)
+{
+	struct payment *p;
+	const char *bolt11str;
+	struct bolt11 *bolt11;
+	char *bolt11_err;
+
+
+	if (!param(cmd, buf, params,
+		    p_req("bolt11", param_string, &bolt11str),
+		    NULL))
+		return command_param_failed();
+
+	if (bolt12_has_prefix(bolt11str))
+		return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
+				    "Invalid `invstring`, the bolt12 is not supported");
+
+	bolt11 = bolt11_decode(tmpctx, bolt11str, plugin_feature_set(cmd->plugin), NULL, chainparams, &bolt11_err);
+	if (!bolt11)
+		return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
+				    "Invalid bolt11: %s", bolt11_err);
+
+	p = payment_new(cmd, cmd, NULL, paymod_mods);
+	p->invstring = tal_steal(p, bolt11str);
+	p->description = NULL;
+	p->blindedpath = NULL;
+	p->blindedpay = NULL;
+
+	//invmsat = b11->msat;
+	//invexpiry = b11->timestamp + b11->expiry;
+
+	p->destination = tal_dup(p, struct node_id, &bolt11->receiver_id);
+	p->payment_hash = tal_dup(p, struct sha256, &bolt11->payment_hash);
+	p->payment_secret =
+			tal_dup_or_null(p, struct secret, bolt11->payment_secret);
+	if (bolt11->metadata)
+		p->payment_metadata = tal_dup_talarr(p, u8, bolt11->metadata);
+	else
+		p->payment_metadata = NULL;
+
+	/* FIXME: libplugin-pay plays with this array, and there are many FIXMEs
+	* about it.  But it looks like a leak, so we suppress it here. */
+	p->routes = notleak_with_children(tal_steal(p, bolt11->routes));
+	p->min_final_cltv_expiry = bolt11->min_final_cltv_expiry;
+	p->features = tal_steal(p, bolt11->features);
+	/* Sanity check */
+	if (feature_offered(bolt11->features, OPT_VAR_ONION) &&
+	    !bolt11->payment_secret)
+		return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
+				    "Invalid bolt11:"
+				    " sets feature var_onion with no secret");
+
+	struct json_stream *resp = jsonrpc_stream_success(cmd);
+	json_add_secret(resp, "payment_secret", p->payment_secret);
+	return command_finished(cmd, resp);
+}
+
 static const struct plugin_command commands[] = {
 	{
 		"paystatus",
@@ -1274,6 +1333,13 @@ static const struct plugin_command commands[] = {
 		"Attempt to pay the {bolt11} invoice.",
 		json_pay
 	},
+	{
+		"selfpay",
+		"payment",
+		"Settles an accepted invoice. If the invoice is already settled, this call will succeed.",
+		"",
+		json_selfpay
+	}
 };
 
 static const char *notification_topics[] = {
