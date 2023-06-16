@@ -669,6 +669,7 @@ static void handle_peer_announcement_signatures(struct peer *peer, const u8 *msg
 				type_to_string(tmpctx, struct channel_id, &chanid));
 	}
 
+	// FIXME(vincenzopalazzo): check the signature!
 	peer->have_sigs[REMOTE] = true;
 	billboard_update(peer);
 
