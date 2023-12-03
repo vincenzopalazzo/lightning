@@ -385,6 +385,8 @@ void drop_to_chain(struct lightningd *ld, struct channel *channel,
 		log_broken(channel->log,
 			   "Cannot broadcast our commitment tx:"
 			   " it's invalid! (ancient channel?)");
+	} else if (channel_state_is_onchain(channel->state)) {
+		log_info(channel->log, "Funding Transaction is ONCHAIN");
 	} else {
 		struct bitcoin_tx *tx COMPILER_WANTS_INIT("gcc 12.3.0");
 

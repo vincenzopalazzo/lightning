@@ -590,6 +590,30 @@ static inline bool channel_state_closed(enum channel_state state)
 	abort();
 }
 
+/* Check if the channel state is on a ONCHAIN state */
+static inline bool channel_state_is_onchain(enum channel_state state)
+{
+	switch (state) {
+	case CHANNELD_AWAITING_LOCKIN:
+	case DUALOPEND_OPEN_INIT:
+	case DUALOPEND_OPEN_COMMIT_READY:
+	case DUALOPEND_OPEN_COMMITTED:
+	case DUALOPEND_AWAITING_LOCKIN:
+	case CHANNELD_NORMAL:
+	case CHANNELD_AWAITING_SPLICE:
+	case CLOSINGD_SIGEXCHANGE:
+	case CHANNELD_SHUTTING_DOWN:
+	case CLOSINGD_COMPLETE:
+	case AWAITING_UNILATERAL:
+	case FUNDING_SPEND_SEEN:
+	case CLOSED:
+		return false;
+	case ONCHAIN:
+		return true;
+	}
+	abort();
+}
+
 /* Not even in the database yet? */
 static inline bool channel_state_uncommitted(enum channel_state state)
 {
