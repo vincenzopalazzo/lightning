@@ -730,7 +730,8 @@ static const u8 *send_onion(const tal_t *ctx, struct lightningd *ld,
 			    u64 partid,
 			    u64 groupid,
 			    struct channel *channel,
-			    struct htlc_out **hout)
+			    struct htlc_out **hout,
+			    bool *endorsed)
 {
 	const u8 *onion;
 	unsigned int base_expiry;
@@ -740,7 +741,8 @@ static const u8 *send_onion(const tal_t *ctx, struct lightningd *ld,
 	return send_htlc_out(ctx, channel, first_hop->amount,
 			     base_expiry + first_hop->delay,
 			     final_amount, payment_hash,
-			     blinding, partid, groupid, onion, NULL, hout);
+			     blinding, partid, groupid, onion, NULL,
+			     hout, endorsed);
 }
 
 static struct command_result *check_invoice_request_usage(struct command *cmd,
@@ -1067,6 +1069,7 @@ send_payment_core(struct lightningd *ld,
 	struct routing_failure *fail;
 	struct command_result *ret;
 	struct wallet_payment *payment;
+	bool *endorsed = NULL;
 
 	/* Reconcile this with previous attempts */
 	ret = check_progress(ld, cmd, rhash, msat, total_msat, partid, group, destination,
@@ -1105,9 +1108,13 @@ send_payment_core(struct lightningd *ld,
 			 fmt_amount_msat(tmpctx, first_hop->amount),
 			 fmt_amount_msat(tmpctx, msat));
 
+	// TODO: add the endorsed value from the confidence of the algorithm
+	// for now we just send it to false is the experimental-jamming feature
+	// will be specified
+	*endorsed = false;
 	failmsg = send_onion(tmpctx, ld, packet, first_hop, msat,
 			     rhash, NULL, partid,
-			     group, channel, &hout);
+			     group, channel, &hout, endorsed);
 
 	if (failmsg) {
 		fail = immediate_routing_failure(

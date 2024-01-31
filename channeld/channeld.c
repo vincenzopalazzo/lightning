@@ -631,7 +631,9 @@ static void handle_peer_add_htlc(struct peer *peer, const u8 *msg)
 				   /* We don't immediately fail incoming htlcs,
 				    * instead we wait and fail them after
 				    * they've been committed */
-				   false);
+				   // TODO: handle the endorse field when we are receiving an htlc with
+				   // the endorse specified.
+				   false, NULL);
 	if (add_err != CHANNEL_ERR_ADD_OK)
 		peer_failed_warn(peer->pps, &peer->channel_id,
 				 "Bad peer_add_htlc: %s",
@@ -5270,26 +5272,29 @@ static void handle_offer_htlc(struct peer *peer, const u8 *inmsg)
 	struct amount_sat htlc_fee;
 	struct pubkey *blinding;
 	struct tlv_update_add_htlc_tlvs *tlvs;
+	bool *endorsed;
 
 	if (!peer->channel_ready[LOCAL] || !peer->channel_ready[REMOTE])
 		status_failed(STATUS_FAIL_MASTER_IO,
 			      "funding not locked for offer_htlc");
 
 	if (!fromwire_channeld_offer_htlc(tmpctx, inmsg, &amount,
-					 &cltv_expiry, &payment_hash,
-					 onion_routing_packet, &blinding))
+					  &cltv_expiry, &payment_hash,
+					  onion_routing_packet, &blinding,
+					  &endorsed))
 		master_badmsg(WIRE_CHANNELD_OFFER_HTLC, inmsg);
 
 	if (blinding) {
 		tlvs = tlv_update_add_htlc_tlvs_new(tmpctx);
 		tlvs->blinding_point = tal_dup(tlvs, struct pubkey, blinding);
+		tlvs->endorsed = (u8 *)tal_steal(tlvs, endorsed);
 	} else
 		tlvs = NULL;
 
 	e = channel_add_htlc(peer->channel, LOCAL, peer->htlc_id,
 			     amount, cltv_expiry, &payment_hash,
 			     onion_routing_packet, take(blinding), NULL,
-			     &htlc_fee, true);
+			     &htlc_fee, true, endorsed);
 	status_debug("Adding HTLC %"PRIu64" amount=%s cltv=%u gave %s",
 		     peer->htlc_id,
 		     type_to_string(tmpctx, struct amount_msat, &amount),

@@ -117,6 +117,8 @@ u32 actual_feerate(const struct channel *channel,
  *                          fail the htlc; for peer incoming don't want to
  *                          error, but rather mark it as failed and fail after
  *                          it's been committed to (so set this to false)
+ * @endorsed: if the current htlc that we are adding to the channel is endorsed,
+ *            see BIPLs 04 for more informations.
  *
  * If this returns CHANNEL_ERR_NONE, the fee htlc was added and
  * the output amounts adjusted accordingly.  Otherwise nothing
@@ -132,7 +134,8 @@ enum channel_add_err channel_add_htlc(struct channel *channel,
 				      const struct pubkey *blinding TAKES,
 				      struct htlc **htlcp,
 				      struct amount_sat *htlc_fee,
-				      bool err_immediate_failures);
+				      bool err_immediate_failures,
+				      bool *endorsed);
 
 /**
  * channel_get_htlc: find an HTLC

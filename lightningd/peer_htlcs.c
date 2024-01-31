@@ -611,7 +611,8 @@ const u8 *send_htlc_out(const tal_t *ctx,
 			u64 groupid,
 			const u8 *onion_routing_packet,
 			struct htlc_in *in,
-			struct htlc_out **houtp)
+			struct htlc_out **houtp,
+			bool *endorsed)
 {
 	u8 *msg;
 
@@ -653,7 +654,8 @@ const u8 *send_htlc_out(const tal_t *ctx,
 	}
 
 	msg = towire_channeld_offer_htlc(out, amount, cltv, payment_hash,
-					onion_routing_packet, blinding);
+					 onion_routing_packet, blinding,
+					 endorsed);
 	subd_req(out->peer->ld, out->owner, take(msg), -1, 0, rcvd_htlc_reply,
 		 *houtp);
 
@@ -818,7 +820,7 @@ static void forward_htlc(struct htlc_in *hin,
 				outgoing_cltv_value, AMOUNT_MSAT(0),
 				&hin->payment_hash,
 				next_blinding, 0 /* partid */, 0 /* groupid */,
-				next_onion, hin, &hout);
+				next_onion, hin, &hout, NULL);
 	if (!failmsg)
 		return;
 
