@@ -703,6 +703,8 @@ static bool funder_finalize_channel_setup(struct state *state,
 	else
 		*pbase = NULL;
 
+	// TODO(bitfinix): Send the commitment transaction to master and generate an hook
+
 	/* We ask the HSM to sign their commitment transaction for us: it knows
 	 * our funding key, it just needs the remote funding key to create the
 	 * witness script.  It also needs the amount of the funding output,
