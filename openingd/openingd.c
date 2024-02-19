@@ -703,7 +703,12 @@ static bool funder_finalize_channel_setup(struct state *state,
 	else
 		*pbase = NULL;
 
-	// TODO(bitfinix): Send the commitment transaction to master and generate an hook
+	msg = towire_openingd_on_funding_tx(tmpctx, *tx);
+	wire_sync_write(REQ_FD, msg);
+	msg = wire_sync_read(tmpctx, REQ_FD);
+	if (!fromwire_openingd_on_funding_tx_reply(msg, msg, tx))
+		status_failed(STATUS_FAIL_MASTER_IO, "Bad onfunding_tx %s",
+			      tal_hex(tmpctx, msg));
 
 	/* We ask the HSM to sign their commitment transaction for us: it knows
 	 * our funding key, it just needs the remote funding key to create the
@@ -817,6 +822,7 @@ static bool funder_finalize_channel_setup(struct state *state,
 		goto fail;
 	}
 
+	// TODO(bitfixnix): RGB for initial tx channel?
 	validate_initial_commitment_signature(HSM_FD, *tx, sig);
 
 	if (!check_tx_sig(*tx, 0, NULL, wscript, &state->their_funding_pubkey, sig)) {
@@ -1503,6 +1509,8 @@ static u8 *handle_master_in(struct state *state)
 	case WIRE_OPENINGD_FAILED:
 	case WIRE_OPENINGD_GOT_OFFER:
 	case WIRE_OPENINGD_GOT_OFFER_REPLY:
+	case WIRE_OPENINGD_ON_FUNDING_TX:
+	case WIRE_OPENINGD_ON_FUNDING_TX_REPLY:
 		break;
 	}
 
