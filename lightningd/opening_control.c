@@ -863,6 +863,7 @@ static void opening_got_offer(struct subd *openingd,
 struct onfunding_channel_tx_hook_payload {
 	struct subd *openingd;
 	struct bitcoin_tx *tx;
+	struct channel_id *cid;
 };
 
 static void onfunding_channel_tx_hook_final(struct onfunding_channel_tx_hook_payload *payload STEALS)
@@ -877,8 +878,13 @@ static void onfunding_channel_tx_hook_serialize(struct onfunding_channel_tx_hook
 						struct json_stream *stream,
 						struct plugin *plugin)
 {
+	struct bitcoin_txid txid;
+
+	bitcoin_txid(payload->tx, &txid);
 	json_object_start(stream, "onfunding_channel_tx");
 	json_add_tx(stream, "tx", payload->tx);
+	json_add_txid(stream, "txid", &txid);
+	json_add_channel_id(stream, "channel_id", payload->cid);
 	json_object_end(stream);
 }
 
@@ -920,7 +926,7 @@ static char *opening_on_funding_tx(struct subd *openingd, const u8 *msg)
 	payload = tal(openingd, struct onfunding_channel_tx_hook_payload);
 	payload->openingd = openingd;
 
-	if (!fromwire_openingd_on_funding_tx(msg, msg, &payload->tx))
+	if (!fromwire_openingd_on_funding_tx(msg, msg, &payload->tx, payload->cid))
 		return tal_fmt(tmpctx, "Unexpected encoding of openingd_on_funding_tx msg: %s",
 			       tal_hex(tmpctx, msg));
 	assert(plugin_hook_call_onfunding_channel_tx(openingd->ld, NULL, payload));

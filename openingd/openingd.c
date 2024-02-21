@@ -703,7 +703,7 @@ static bool funder_finalize_channel_setup(struct state *state,
 	else
 		*pbase = NULL;
 
-	msg = towire_openingd_on_funding_tx(tmpctx, *tx);
+	msg = towire_openingd_on_funding_tx(tmpctx, *tx, &cid);
 	wire_sync_write(REQ_FD, msg);
 	msg = wire_sync_read(tmpctx, REQ_FD);
 	if (!fromwire_openingd_on_funding_tx_reply(msg, msg, tx))

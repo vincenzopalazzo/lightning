@@ -143,6 +143,7 @@ msgdata,openingd_fundee,channel_type,channel_type,
 # Communicate the Funding Tx to master
 msgtype,openingd_on_funding_tx,6045
 msgdata,openingd_on_funding_tx,tx,bitcoin_tx,
+msgdata,openingd_on_funding_tx,channel_id,channel_id,
 
 # Get a reply from master -> openingd
 msgtype,openingd_on_funding_tx_reply,6145
