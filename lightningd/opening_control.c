@@ -924,13 +924,13 @@ static char *opening_on_funding_tx(struct subd *openingd, const u8 *msg)
 {
 	struct onfunding_channel_tx_hook_payload *payload;
 	payload = tal(openingd, struct onfunding_channel_tx_hook_payload);
+	payload->cid = tal(payload, struct channel_id);
 	payload->openingd = openingd;
 
 	if (!fromwire_openingd_on_funding_tx(msg, msg, &payload->tx, payload->cid))
 		return tal_fmt(tmpctx, "Unexpected encoding of openingd_on_funding_tx msg: %s",
 			       tal_hex(tmpctx, msg));
 	assert(plugin_hook_call_onfunding_channel_tx(openingd->ld, NULL, payload));
-	// FIXME(bitfinix): return an error
 	return NULL;
 }
 
