@@ -895,8 +895,9 @@ static bool onfunding_channel_tx_hook_deserialize(struct onfunding_channel_tx_ho
 	const jsmntok_t *result_tok, *error_tok, *tx_tok;
 
 	if ((error_tok = json_get_member(buffer, toks, "error")) != NULL)
-		/*FIXME(bitfinix): please return an error to openingd*/
-		return false;
+		fatal("Plugin returned an error inside the response to the"
+		      " onfunding_channel_tx hook: %.*s",
+		      toks[0].end - toks[0].start, buffer + toks[0].start);
 
 	if ((result_tok  = json_get_member(buffer, toks, "result")) == NULL)
 		fatal("Plugin returned an invalid response to the"
@@ -909,7 +910,9 @@ static bool onfunding_channel_tx_hook_deserialize(struct onfunding_channel_tx_ho
 		      toks[0].end - toks[0].start, buffer + toks[0].start);
 
 	if (!json_to_tx(buffer, tx_tok, payload->tx))
-		return false;
+		fatal("Plugin returned an invalid response to the"
+		      " onfunding_channel_tx hook: %.*s",
+		      toks[0].end - toks[0].start, buffer + toks[0].start);
 	return true;
 }
 
@@ -925,12 +928,13 @@ static char *opening_on_funding_tx(struct subd *openingd, const u8 *msg)
 	struct onfunding_channel_tx_hook_payload *payload;
 	payload = tal(openingd, struct onfunding_channel_tx_hook_payload);
 	payload->cid = tal(payload, struct channel_id);
+	payload->tx = tal(payload, struct bitcoin_tx);
 	payload->openingd = openingd;
 
 	if (!fromwire_openingd_on_funding_tx(msg, msg, &payload->tx, payload->cid))
 		return tal_fmt(tmpctx, "Unexpected encoding of openingd_on_funding_tx msg: %s",
 			       tal_hex(tmpctx, msg));
-	assert(plugin_hook_call_onfunding_channel_tx(openingd->ld, NULL, payload));
+	plugin_hook_call_onfunding_channel_tx(openingd->ld, NULL, payload);
 	return NULL;
 }
 
