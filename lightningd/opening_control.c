@@ -869,6 +869,7 @@ struct onfunding_channel_tx_hook_payload {
 static void onfunding_channel_tx_hook_final(struct onfunding_channel_tx_hook_payload *payload STEALS)
 {
 	struct subd *openingd = payload->openingd;
+	log_info(openingd->log, "from hook sending the tx %s", fmt_bitcoin_tx(tmpctx, payload->tx));
 	// FIXME(bitfinix): manage the errors!
 	subd_send_msg(openingd,
 		      take(towire_openingd_on_funding_tx_reply(NULL, payload->tx)));
@@ -894,25 +895,26 @@ static bool onfunding_channel_tx_hook_deserialize(struct onfunding_channel_tx_ho
 {
 	const jsmntok_t *result_tok, *error_tok, *tx_tok;
 
+	log_info(payload->openingd->log, "buffer %s", buffer);
 	if ((error_tok = json_get_member(buffer, toks, "error")) != NULL)
 		fatal("Plugin returned an error inside the response to the"
 		      " onfunding_channel_tx hook: %.*s",
 		      toks[0].end - toks[0].start, buffer + toks[0].start);
 
-	if ((result_tok  = json_get_member(buffer, toks, "result")) == NULL)
-		fatal("Plugin returned an invalid response to the"
+	if ((result_tok = json_get_member(buffer, toks, "result")) == NULL)
+		fatal("Plugin returned an invalid response (missing result) to the"
 		      " onfunding_channel_tx hook: %.*s",
 		      toks[0].end - toks[0].start, buffer + toks[0].start);
 
 	if ((tx_tok = json_get_member(buffer, result_tok, "tx")) == NULL)
-		fatal("Plugin returned an invalid response to the"
+		fatal("Plugin returned an invalid response (missing tx) to the"
 		      " onfunding_channel_tx hook: %.*s",
 		      toks[0].end - toks[0].start, buffer + toks[0].start);
 
 	if (!json_to_tx(buffer, tx_tok, payload->tx))
-		fatal("Plugin returned an invalid response to the"
+		fatal("Plugin returned an invalid (json to tx) response to the"
 		      " onfunding_channel_tx hook: %.*s",
-		      toks[0].end - toks[0].start, buffer + toks[0].start);
+		      tx_tok[0].end - tx_tok[0].start, buffer + tx_tok[0].start);
 	return true;
 }
 
