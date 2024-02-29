@@ -105,7 +105,7 @@ bool json_to_txid(const char *buffer, const jsmntok_t *tok,
 
 /* Extract a bitcoin tx from this */
 bool json_to_tx(const char *buffer, const jsmntok_t *tok,
-		struct bitcoin_tx *tx);
+		struct bitcoin_tx **tx);
 
 /* Extract a bitcoin outpoint from this */
 bool json_to_outpoint(const char *buffer, const jsmntok_t *tok,

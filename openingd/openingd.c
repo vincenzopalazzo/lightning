@@ -8,6 +8,7 @@
  * commit to the database once openingd succeeds.
  */
 #include "config.h"
+#include <assert.h>
 #include <bitcoin/script.h>
 #include <ccan/array_size/array_size.h>
 #include <ccan/breakpoint/breakpoint.h>
@@ -31,6 +32,7 @@
 #include <openingd/openingd_wiregen.h>
 #include <wire/peer_wire.h>
 #include <wire/wire_sync.h>
+#include <wally_psbt.h>
 
 /* stdin == lightningd, 3 == peer, 4 = hsmd */
 #define REQ_FD STDIN_FILENO
@@ -703,6 +705,7 @@ static bool funder_finalize_channel_setup(struct state *state,
 	else
 		*pbase = NULL;
 
+	assert((*tx)->psbt->inputs[0].witness_utxo);
 	msg = towire_openingd_on_funding_tx(tmpctx, *tx, &cid);
 	wire_sync_write(REQ_FD, msg);
 	msg = wire_sync_read(tmpctx, REQ_FD);
@@ -710,6 +713,7 @@ static bool funder_finalize_channel_setup(struct state *state,
 		status_failed(STATUS_FAIL_MASTER_IO, "Bad onfunding_tx %s",
 			      tal_hex(tmpctx, msg));
 
+	assert((*tx)->psbt->inputs[0].witness_utxo);
 	/* We ask the HSM to sign their commitment transaction for us: it knows
 	 * our funding key, it just needs the remote funding key to create the
 	 * witness script.  It also needs the amount of the funding output,

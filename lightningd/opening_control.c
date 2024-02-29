@@ -912,7 +912,7 @@ static bool onfunding_channel_tx_hook_deserialize(struct onfunding_channel_tx_ho
 		      toks[0].end - toks[0].start, buffer + toks[0].start);
 
 	payload->tx = NULL;
-	if (!json_to_tx(buffer, tx_tok, payload->tx))
+	if (!json_to_tx(buffer, tx_tok, &payload->tx))
 		fatal("Plugin returned an invalid (json to tx) response to the"
 		      " onfunding_channel_tx hook: %.*s",
 		      tx_tok[0].end - tx_tok[0].start, buffer + tx_tok[0].start);
