@@ -2449,6 +2449,7 @@ impl From<requests::FetchinvoiceRequest> for pb::FetchinvoiceRequest {
             recurrence_label: c.recurrence_label, // Rule #2 for type string?
             timeout: c.timeout, // Rule #2 for type number?
             payer_note: c.payer_note, // Rule #2 for type string?
+            exposeid: c.exposeid, // Rule #2 for type boolean?
         }
     }
 }
@@ -3231,6 +3232,7 @@ impl From<pb::FetchinvoiceRequest> for requests::FetchinvoiceRequest {
             recurrence_label: c.recurrence_label, // Rule #1 for type string?
             timeout: c.timeout, // Rule #1 for type number?
             payer_note: c.payer_note, // Rule #1 for type string?
+            exposeid: c.exposeid, // Rule #1 for type boolean?
         }
     }
 }
