@@ -885,6 +885,7 @@ static void onfunding_channel_tx_hook_serialize(struct onfunding_channel_tx_hook
 	json_object_start(stream, "onfunding_channel_tx");
 	json_add_tx(stream, "tx", payload->tx);
 	json_add_txid(stream, "txid", &txid);
+	json_add_psbt(stream, "psbt", payload->tx->psbt);
 	json_add_channel_id(stream, "channel_id", payload->cid);
 	json_object_end(stream);
 }
@@ -893,9 +894,9 @@ static bool onfunding_channel_tx_hook_deserialize(struct onfunding_channel_tx_ho
 						  const char *buffer,
 						  const jsmntok_t *toks)
 {
-	const jsmntok_t *result_tok, *error_tok, *tx_tok;
+	const jsmntok_t *result_tok, *error_tok,
+		*tx_tok, *psbt_tok;
 
-	log_info(payload->openingd->log, "buffer %s", buffer);
 	if ((error_tok = json_get_member(buffer, toks, "error")) != NULL)
 		fatal("Plugin returned an error inside the response to the"
 		      " onfunding_channel_tx hook: %.*s",
@@ -911,12 +912,17 @@ static bool onfunding_channel_tx_hook_deserialize(struct onfunding_channel_tx_ho
 		      " onfunding_channel_tx hook: %.*s",
 		      toks[0].end - toks[0].start, buffer + toks[0].start);
 
-	payload->tx = NULL;
+	if ((psbt_tok = json_get_member(buffer, result_tok, "psbt")) == NULL)
+		fatal("Plugin returned an invalid response (missing psbt) to the"
+		      " onfunding_channel_tx hook: %.*s",
+		      toks[0].end - toks[0].start, buffer + toks[0].start);
+
 	if (!json_to_tx(buffer, tx_tok, &payload->tx))
 		fatal("Plugin returned an invalid (json to tx) response to the"
 		      " onfunding_channel_tx hook: %.*s",
 		      tx_tok[0].end - tx_tok[0].start, buffer + tx_tok[0].start);
-	log_info(payload->openingd->log, "hook return the following tx: %s", fmt_bitcoin_tx(tmpctx, payload->tx));
+
+	payload->tx->psbt = json_to_psbt(buffer, buffer, psbt_tok);
 	return true;
 }
 
