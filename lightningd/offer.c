@@ -431,7 +431,7 @@ static struct command_result *json_createinvoicerequest(struct command *cmd,
 		}
 	}
 
-	if (!invreq->invreq_metadata) {
+	if (!invreq->invreq_metadata && !*exposeid) {
 		/* BOLT-offers #12:
 		 *
 		 * `invreq_metadata` might typically contain information about
