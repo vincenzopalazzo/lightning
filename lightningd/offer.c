@@ -447,6 +447,7 @@ static struct command_result *json_createinvoicerequest(struct command *cmd,
 		invreq->invreq_metadata = tal_arr(invreq, u8, 16);
 		randombytes_buf(invreq->invreq_metadata,
 				tal_bytelen(invreq->invreq_metadata));
+		log_debug(cmd->ld->log, "invrequest metadata calculation %s", tal_hex(tmpctx, invreq->invreq_metadata));
 	}
 
 	invreq->invreq_payer_id = tal(invreq, struct pubkey);
