@@ -287,9 +287,10 @@ static void json_add_utxo(struct json_stream *response,
 	else
 		json_add_string(response, "address", out);
 
-	if (utxo->spendheight)
+	if (utxo->spendheight) {
+		assert(utxo->status == OUTPUT_STATE_SPENT);
 		json_add_string(response, "status", "spent");
-	else if (utxo->blockheight) {
+	} else if (utxo->blockheight) {
 		json_add_string(response, "status",
 				utxo_is_immature(utxo, current_height)
 				    ? "immature"
