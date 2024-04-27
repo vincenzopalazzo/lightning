@@ -287,8 +287,8 @@ static void json_add_utxo(struct json_stream *response,
 	else
 		json_add_string(response, "address", out);
 
+	json_add_num(response, "status_map", utxo->status);
 	if (utxo->spendheight) {
-		assert(utxo->status == OUTPUT_STATE_SPENT);
 		json_add_string(response, "status", "spent");
 	} else if (utxo->blockheight) {
 		json_add_string(response, "status",

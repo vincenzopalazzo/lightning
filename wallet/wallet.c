@@ -644,7 +644,7 @@ struct utxo *wallet_find_utxo(const tal_t *ctx, struct wallet *w,
 					", csv_lock"
 					", is_in_coinbase"
 					" FROM outputs"
-					" WHERE status = ?"
+					" WHERE (status = ? AND spendheight IS NULL)"
 					" OR (status = ? AND reserved_til <= ?)"
 					"ORDER BY RANDOM();"));
 	db_bind_int(stmt, output_status_in_db(OUTPUT_STATE_AVAILABLE));
@@ -695,7 +695,7 @@ bool wallet_has_funds(struct wallet *w,
 					", csv_lock"
 					", is_in_coinbase"
 					" FROM outputs"
-					" WHERE status = ?"
+					" WHERE (status = ? AND spendheight IS NULL)"
 					" OR (status = ? AND reserved_til <= ?)"));
 	db_bind_int(stmt, output_status_in_db(OUTPUT_STATE_AVAILABLE));
 	db_bind_int(stmt, output_status_in_db(OUTPUT_STATE_RESERVED));
