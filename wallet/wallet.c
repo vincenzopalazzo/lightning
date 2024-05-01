@@ -1,4 +1,5 @@
 #include "config.h"
+#include <assert.h>
 #include <bitcoin/script.h>
 #include <ccan/array_size/array_size.h>
 #include <ccan/cast/cast.h>
@@ -283,9 +284,14 @@ bool wallet_update_output_status(struct wallet *w,
 	size_t changes;
 	if (oldstatus != OUTPUT_STATE_ANY) {
 		stmt = db_prepare_v2(
-		    w->db, SQL("UPDATE outputs SET status=? WHERE status=? AND "
+		    w->db, SQL("UPDATE outputs SET status=?, spend_height=? WHERE status=? AND "
 			       "prev_out_tx=? AND prev_out_index=?"));
 		db_bind_int(stmt, output_status_in_db(newstatus));
+		assert(oldstatus != newstatus);
+		if (oldstatus == OUTPUT_STATE_SPENT)
+			db_bind_null(stmt);
+		// FIXME(vincent): what happens when the new status is spend and
+		// we should set the `prev_out_index`?
 		db_bind_int(stmt, output_status_in_db(oldstatus));
 		db_bind_txid(stmt, &outpoint->txid);
 		db_bind_int(stmt, outpoint->n);
