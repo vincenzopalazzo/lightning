@@ -23,6 +23,7 @@
 #include <lightningd/peer_control.h>
 #include <lightningd/runes.h>
 #include <onchaind/onchaind_wiregen.h>
+#include <stdlib.h>
 #include <wallet/invoices.h>
 #include <wallet/txfilter.h>
 #include <wallet/wallet.h>
@@ -282,6 +283,10 @@ bool wallet_update_output_status(struct wallet *w,
 {
 	struct db_stmt *stmt;
 	size_t changes;
+
+	if (oldstatus == newstatus)
+		return false;
+
 	if (oldstatus != OUTPUT_STATE_ANY) {
 		stmt = db_prepare_v2(
 		    w->db, SQL("UPDATE outputs SET status=?, spend_height=? WHERE status=? AND "
@@ -290,6 +295,8 @@ bool wallet_update_output_status(struct wallet *w,
 		assert(oldstatus != newstatus);
 		if (oldstatus == OUTPUT_STATE_SPENT)
 			db_bind_null(stmt);
+		else if (newstatus == OUTPUT_STATE_SPENT)
+			assert(false && "We do not have any way to set the `spend_height`, ATM");
 		// FIXME(vincent): what happens when the new status is spend and
 		// we should set the `prev_out_index`?
 		db_bind_int(stmt, output_status_in_db(oldstatus));
