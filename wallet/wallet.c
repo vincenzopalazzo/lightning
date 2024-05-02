@@ -299,6 +299,9 @@ bool wallet_update_output_status(struct wallet *w,
 			assert(false && "We do not have any way to set the `spend_height`, ATM");
 		// FIXME(vincent): what happens when the new status is spend and
 		// we should set the `prev_out_index`?
+		//
+		// Immagine this case, there is a utxo with status 0 and there is
+		// a prev_out_index set, we should move just the status
 		db_bind_int(stmt, output_status_in_db(oldstatus));
 		db_bind_txid(stmt, &outpoint->txid);
 		db_bind_int(stmt, outpoint->n);
