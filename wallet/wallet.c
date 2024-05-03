@@ -284,9 +284,6 @@ bool wallet_update_output_status(struct wallet *w,
 	struct db_stmt *stmt;
 	size_t changes;
 
-	if (oldstatus == newstatus)
-		return false;
-
 	if (oldstatus != OUTPUT_STATE_ANY) {
 		stmt = db_prepare_v2(
 		    w->db, SQL("UPDATE outputs SET status=?, spend_height=? WHERE status=? AND "
