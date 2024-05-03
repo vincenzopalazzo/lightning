@@ -289,7 +289,7 @@ bool wallet_update_output_status(struct wallet *w,
 		    w->db, SQL("UPDATE outputs SET status=?, spend_height=? WHERE status=? AND "
 			       "prev_out_tx=? AND prev_out_index=?"));
 		db_bind_int(stmt, output_status_in_db(newstatus));
-		 if (newstatus == OUTPUT_STATE_SPENT)
+		 if (newstatus == OUTPUT_STATE_SPENT && oldstatus != OUTPUT_STATE_SPENT)
 			assert(false && "We do not have any way to set the `spend_height`, ATM");
 		 else
 			 db_bind_null(stmt);
