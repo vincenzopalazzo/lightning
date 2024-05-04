@@ -5604,3 +5604,27 @@ def test_pay_while_opening_channel(node_factory, bitcoind, executor):
     assert only_one(l1.rpc.listpeerchannels(l3.info['id'])['channels'])['state'] == 'OPENINGD'
     inv = l2.rpc.invoice(10000, "inv", "inv")
     l1.rpc.pay(inv['bolt11'])
+
+
+def test_pay_offers_case_sensive(node_factory):
+    """TODO please document me"""
+    opt = {
+        "experimental-offers": None
+    }
+    l1, l2 = node_factory.line_graph(2, fundamount=10**6, wait_for_announce=True, opts=[opt, opt])
+
+    offer1 = l2.rpc.call("offer", {
+        "amount": "1sat",
+        "description": "This is a description"
+    })["bolt12"]
+    offer2 = l2.rpc.call("offer", {
+        "amount": "1sat",
+        "description": "this is a description",
+    })["bolt12"]
+    assert offer1 != offer2
+
+    invoice = l1.rpc.call("fetchinvoice", {
+        "offer": offer2
+    })["invoice"]
+
+    l1.rpc.pay(invoice)
