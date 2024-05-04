@@ -1,4 +1,5 @@
 /*~ This contains all the code to handle onion messages. */
+#include "common/node_id.h"
 #include "config.h"
 #include <ccan/cast/cast.h>
 #include <common/blindedpath.h>
@@ -32,7 +33,12 @@ void onionmsg_req(struct daemon *daemon, const u8 *msg)
 	if (peer) {
 		u8 *omsg = towire_onion_message(NULL, &blinding, onionmsg);
 		inject_peer_msg(peer, take(omsg));
+	} else {
+		u8 *omsg = towire_onion_message(NULL, &blinding, onionmsg);
+		// FIXME: we should check if the node id is out node id.
+		handle_onion_message(daemon, NULL, omsg);
 	}
+
 }
 
 /* Peer sends an onion msg. */

@@ -1,3 +1,5 @@
+#include "ccan/tal/tal.h"
+#include "common/node_id.h"
 #include "config.h"
 #include <bitcoin/chainparams.h>
 #include <ccan/array_size/array_size.h>
@@ -578,10 +580,15 @@ send_modern_message(struct command *cmd,
 				    sending->done,
 				    forward_error,
 				    sending->sent);
-	json_add_pubkey(req->js, "first_id", &sent->path[1]);
+	if (tal_count(sending->sent->path) == 1)
+		json_add_pubkey(req->js, "first_id", &sent->path[0]);
+	else
+		json_add_pubkey(req->js, "first_id", &sent->path[1]);
 	json_add_pubkey(req->js, "blinding", &fwd_blinding);
 	json_array_start(req->js, "hops");
-	for (size_t i = 1; i < nhops; i++) {
+	for (size_t i = 0; i < nhops; i++) {
+		if (tal_count(sending->sent->path) != 1)
+			continue;
 		u8 *tlvbin;
 		json_object_start(req->js, NULL);
 		json_add_pubkey(req->js, "id", &node_alias[i]);
@@ -620,11 +627,6 @@ static struct command_result *make_reply_path(struct command *cmd,
 	struct out_req *req;
 	size_t nhops = tal_count(sending->sent->path);
 
-	/* FIXME: Maybe we should allow this? */
-	if (tal_count(sending->sent->path) == 1)
-		return command_fail(cmd, PAY_ROUTE_NOT_FOUND,
-				    "Refusing to talk to ourselves");
-
 	/* Create transient secret so we can validate reply! */
 	sending->sent->reply_secret = tal(sending->sent, struct secret);
 	randombytes_buf(sending->sent->reply_secret, sizeof(struct secret));
@@ -637,7 +639,7 @@ static struct command_result *make_reply_path(struct command *cmd,
 	/* FIXME: Could create an independent reply path, not just
 	 * reverse existing. */
 	json_array_start(req->js, "ids");
-	for (int i = nhops - 2; i >= 0; i--)
+	for (int i = nhops - 1; i >= 0; i--)
 		json_add_pubkey(req->js, NULL, &sending->sent->path[i]);
 	json_array_end(req->js);
 	json_add_secret(req->js, "pathsecret", sending->sent->reply_secret);

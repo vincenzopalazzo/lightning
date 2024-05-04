@@ -1,3 +1,5 @@
+#include "bitcoin/pubkey.h"
+#include "common/node_id.h"
 #include "config.h"
 #include <ccan/mem/mem.h>
 #include <common/blindedpath.h>
@@ -204,7 +206,7 @@ static struct command_result *json_sendonionmessage(struct command *cmd,
 
 	/* Sanity check first; connectd doesn't bother telling us if peer
 	 * can't be reached. */
-	if (!peer_by_id(cmd->ld, first_id))
+	if (!peer_by_id(cmd->ld, first_id) && !node_id_eq(first_id, (const struct node_id*)&cmd->ld->id))
 		return command_fail(cmd, LIGHTNINGD, "Unknown first peer");
 
 	/* Create an onion which encodes this. */

@@ -1128,8 +1128,6 @@ static struct command_result *json_pay(struct command *cmd,
 
 		p->destination = tal(p, struct node_id);
 		node_id_from_pubkey(p->destination, b12->invoice_node_id);
-		p->payment_hash = tal_dup(p, struct sha256,
-					  b12->invoice_payment_hash);
 		if (b12->invreq_recurrence_counter && !label)
 			return command_fail(
 			    cmd, JSONRPC2_INVALID_PARAMS,
@@ -1179,6 +1177,10 @@ static struct command_result *json_pay(struct command *cmd,
 		else
 			invexpiry = *b12->invoice_created_at + BOLT12_DEFAULT_REL_EXPIRY;
 		p->local_invreq_id = tal_steal(p, local_invreq_id);
+
+		// FIXME: what about this shit?
+		p->payment_secret = NULL;
+		p->payment_hash = b12->invoice_payment_hash;
 	}
 
 	if (time_now().ts.tv_sec > invexpiry)
