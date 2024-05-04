@@ -4299,3 +4299,23 @@ def test_plugin_startdir_lol(node_factory):
     """Though we fail to start many of them, we don't crash!"""
     l1 = node_factory.get_node(broken_log='.*')
     l1.rpc.plugin_startdir(os.path.join(os.getcwd(), 'tests/plugins'))
+
+
+def test_self_fetchinvoice(node_factory):
+    """Trying to fetch an invoice from outself"""
+    options={"experimental-offers": None}
+    node, _ = node_factory.line_graph(2, wait_for_announce=True, opts=[options, options])
+
+    offer = node.rpc.call("offer", {
+        "amount": "100sat",
+        "description": "Self fetching"
+    })["bolt12"]
+
+    invoice = node.rpc.call("fetchinvoice", {
+        "offer": offer,
+    })["invoice"]
+
+    node.rpc.call("pay", {
+        # FIXME: change the bolt11 invoice
+        "bolt11": invoice
+    })
