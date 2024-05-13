@@ -80,6 +80,11 @@ struct bolt11 {
 	u8 *metadata;
 
 	struct list_head extra_fields;
+
+	// FIXME(vincenzopalazzo): adds rgb information
+	//
+	// 1. `rgb_amt`
+	// 2. `rgb_contract_id`
 };
 
 /* Decodes and checks signature; returns NULL on error; description is
