@@ -840,6 +840,11 @@ invoice_complete(struct invoice_info *info,
 				    "preimage already used");
 	}
 
+	// FIXME(vincenzopalazzo): to support create rgb lightning invoice we should add:
+	//
+	// 1: `rgb_amount` tag that shows the rgb amount on the chain
+	// 2: `rgb_contract_id` tag that fix the invoice from a specific
+	// RGB assert.
 	if (!invoices_create(wallet->invoices,
 			     &inv_dbid,
 			     info->b11->msat,
