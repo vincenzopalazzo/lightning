@@ -182,6 +182,16 @@ struct tlv_offer *offer_decode(const tal_t *ctx,
 		return NULL;
 	}
 
+	/* BOLT-offers #12:
+	 *
+	 * - if offer_amount is set and offer_description is not set:
+	 *    - MUST NOT respond to the offer.
+	 */
+	if (!offer->offer_description && offer->offer_amount) {
+		*fail = tal_strdup(ctx, "Offer does not contain a description, but contains an amount");
+		return tal_free(offer);
+	}
+
 	*fail = check_features_and_chain(ctx,
 					 our_features, must_be_chain,
 					 offer->offer_features,
@@ -208,17 +218,6 @@ struct tlv_offer *offer_decode(const tal_t *ctx,
 					offer->fields[i].numtype);
 			return tal_free(offer);
 		}
-	}
-
-	/* BOLT-offers #12:
-	 * - if `offer_description` is not set:
-	 *   - MUST NOT respond to the offer.
-	 * - if `offer_node_id` is not set:
-	 *   - MUST NOT respond to the offer.
-	 */
-	if (!offer->offer_description) {
-		*fail = tal_strdup(ctx, "Offer does not contain a description");
-		return tal_free(offer);
 	}
 
 	if (!offer->offer_node_id) {
