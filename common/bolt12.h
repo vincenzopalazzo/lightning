@@ -124,6 +124,11 @@ void offer_period_paywindow(const struct recurrence *recurrence,
 bool bolt12_has_prefix(const char *str);
 
 /**
+ * Preliminary prefix check to see if the string might be a bolt12 offer (or invoice request) string.
+ */
+bool bolt12_has_req_or_off_prefix(const char *str);
+
+/**
  * tlv_span: Find span of this inclusive range of tlv types
  * @tlvstream: the tlv stream
  * @minfield: lowest field to find

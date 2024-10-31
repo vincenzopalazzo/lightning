@@ -604,6 +604,11 @@ bool bolt12_has_prefix(const char *str)
 	       bolt12_has_request_prefix(str);
 }
 
+bool bolt12_has_req_or_off_prefix(const char *str)
+{
+	return bolt12_has_offer_prefix(str) || bolt12_has_invoice_prefix(str);
+}
+
 /* Inclusive span of tlv range >= minfield and <= maxfield */
 size_t tlv_span(const u8 *tlvstream, u64 minfield, u64 maxfield,
 		size_t *startp)

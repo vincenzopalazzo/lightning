@@ -1,3 +1,6 @@
+#include "ccan/short_types/short_types.h"
+#include "common/bolt11.h"
+#include "common/bolt12.h"
 #include "config.h"
 #include <bitcoin/chainparams.h>
 #include <ccan/array_size/array_size.h>
@@ -1211,9 +1214,29 @@ preapproveinvoice_succeed(struct command *cmd,
 
 	return start_payment(cmd, p);
 }
-static struct command_result *json_pay(struct command *cmd,
-				       const char *buf,
-				       const jsmntok_t *params)
+
+struct paycmd_info {
+	const char *invstr;
+	struct bolt11 *b11;
+	u64 *maxfee_pct_millionths;
+	u32 *maxdelay;
+	struct amount_msat *exemptfee, *msat, *maxfee, *partial;
+	const char *label, *description;
+	unsigned int *retryfor;
+	u64 *riskfactor_millionths;
+	struct shadow_route_data *shadow_route;
+	struct amount_msat *invmsat;
+	u64 invexpiry;
+	struct sha256 *local_invreq_id;
+	const struct tlv_invoice *b12;
+	struct out_req *req;
+	struct route_exclusion **exclusions;
+	bool *dev_use_shadow;
+};
+
+static struct command_result *execute_pay(struct command *cmd,
+					  const char *buf,
+					  const jsmntok_t *params)
 {
 	struct payment *p;
 	const char *invstr;
@@ -1238,8 +1261,7 @@ static struct command_result *json_pay(struct command *cmd,
 	 * would add them to the `param()` call below, and have them be
 	 * initialized directly that way. */
 	if (!param_check(cmd, buf, params,
-		   /* FIXME: parameter should be invstring now */
-		   p_req("invstring", param_invstring, &invstr),
+		   p_req("invstr", param_invstring, &invstr),
 		   p_opt("amount_msat", param_msat, &msat),
 		   p_opt("label", param_string, &label),
 		   p_opt_def("riskfactor", param_millionths,
@@ -1258,6 +1280,7 @@ static struct command_result *json_pay(struct command *cmd,
 		   p_opt_dev("dev_use_shadow", param_bool, &dev_use_shadow, true),
 		      NULL))
 		return command_param_failed();
+
 
 	p = payment_new(cmd, cmd, NULL /* No parent */, global_hints, paymod_mods);
 	p->invstring = tal_steal(p, invstr);
@@ -1474,6 +1497,66 @@ static struct command_result *json_pay(struct command *cmd,
 	}
 	json_add_string(req->js, "bolt11", p->invstring);
 	return send_outreq(cmd->plugin, req);
+}
+
+
+static struct command_result *fetchinvoice_done(struct command *cmd,
+						const char *buf,
+						const jsmntok_t *params,
+						/* For what it is need for? */
+						struct paycmd_info *info)
+{
+	// FIXME: we should call pay again! but with the invoice this time.
+	return execute_pay(cmd, buf, params);
+}
+static struct command_result *json_pay(struct command *cmd,
+				       const char *buf,
+				       const jsmntok_t *params)
+{
+	const char *invstr;
+	struct amount_msat *invmsat;
+	struct paycmd_info *pay_info;
+
+	pay_info = tal(cmd, struct paycmd_info);
+
+        /* If any of the modifiers need to add params to the JSON-RPC call we
+	 * would add them to the `param()` call below, and have them be
+	 * initialized directly that way. */
+	if (!param_check(cmd, buf, params,
+		   p_req("invstr", param_invstring, &invstr),
+		   p_opt("amount_msat", param_msat, &invmsat),
+	           p_opt("label", param_string, &pay_info->label),
+		   p_opt_def("riskfactor", param_millionths,
+			     &pay_info->riskfactor_millionths, 10000000),
+		   p_opt("maxfeepercent", param_millionths,
+			 &pay_info->maxfee_pct_millionths),
+		   p_opt_def("retry_for", param_number, &pay_info->retryfor, 60),
+		   p_opt_def("maxdelay", param_number, &pay_info->maxdelay,
+			     maxdelay_default),
+		   p_opt("exemptfee", param_msat, &pay_info->exemptfee),
+		   p_opt("localinvreqid", param_sha256, &pay_info->local_invreq_id),
+		   p_opt("exclude", param_route_exclusion_array, &pay_info->exclusions),
+		   p_opt("maxfee", param_msat, &pay_info->maxfee),
+		   p_opt("description", param_escaped_string, &pay_info->description),
+		   p_opt("partial_msat", param_msat, &pay_info->partial),
+		   p_opt_dev("dev_use_shadow", param_bool, &pay_info->dev_use_shadow, true),
+	           NULL))
+		return command_param_failed();
+
+	/* Check if the invstr is a offer or an invoice request, if yes
+	 * we try to fetch the invoice. This is a best effer so the fetchinvoice
+	 * can fails, and require to the user to use fetchinvoice directly. */
+	if (bolt12_has_req_or_off_prefix(invstr)) {
+		struct out_req *req;
+
+		req = jsonrpc_request_start(cmd->plugin, cmd, "fetchinvoice", fetchinvoice_done, forward_error, pay_info);
+		json_add_string(req->js, "offer", invstr);
+		if (invmsat)
+			json_add_amount_msat(req->js, "amount_msat", *invmsat);
+
+		return send_outreq(cmd->plugin, req);
+	}
+	return execute_pay(cmd, buf, params);
 }
 
 static struct command_result *handle_channel_hint_update(struct command *cmd,
