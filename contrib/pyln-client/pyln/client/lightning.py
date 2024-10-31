@@ -651,7 +651,7 @@ class LightningRpc(UnixDomainSocketRpc):
         shadow routing (used for testing).
         """
         payload = {
-            "bolt11": bolt11,
+            "invstr": bolt11,
             "amount_msat": amount_msat,
             "label": label,
             "riskfactor": riskfactor,

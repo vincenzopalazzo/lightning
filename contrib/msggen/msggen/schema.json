@@ -28086,15 +28086,16 @@
       ],
       "request": {
         "required": [
-          "bolt11"
+          "invstr"
         ],
         "additionalProperties": false,
         "properties": {
-          "bolt11": {
+          "invstr": {
             "type": "string",
             "description": [
-              "Bolt11 invoice, if **experimental-offers** is enabled, it can actually be a bolt12 invoice, such as one received from lightningd-fetchinvoice(7). If it does not contain an amount, *amount_msat* is required, otherwise if it is specified it must be *null*."
-            ]
+              "Bolt11 invoice, if **experimental-offers** is enabled, it can actually be a bolt12 offer/invoice_request/invoice, such as one received from lightningd-fetchinvoice(7). If it does not contain an amount, *amount_msat* is required, otherwise if it is specified it must be *null*."
+            ],
+            "added": "v24.11"
           },
           "amount_msat": {
             "type": "msat",

@@ -1381,6 +1381,8 @@ pub mod requests {
 	    #[serde(skip_serializing_if = "Option::is_none")]
 	    pub exemptfee: Option<Amount>,
 	    #[serde(skip_serializing_if = "Option::is_none")]
+	    pub invstr: Option<String>,
+	    #[serde(skip_serializing_if = "Option::is_none")]
 	    pub label: Option<String>,
 	    #[serde(skip_serializing_if = "Option::is_none")]
 	    pub localinvreqid: Option<String>,
@@ -1398,7 +1400,6 @@ pub mod requests {
 	    pub riskfactor: Option<f64>,
 	    #[serde(skip_serializing_if = "crate::is_none_or_empty")]
 	    pub exclude: Option<Vec<String>>,
-	    pub bolt11: String,
 	}
 
 	impl From<PayRequest> for Request {

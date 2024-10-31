@@ -991,7 +991,6 @@ message MakesecretResponse {
 }
 
 message PayRequest {
-	string bolt11 = 1;
 	optional string label = 3;
 	optional double maxfeepercent = 4;
 	optional uint32 retry_for = 5;
@@ -1004,6 +1003,7 @@ message PayRequest {
 	optional Amount amount_msat = 13;
 	optional bytes localinvreqid = 14;
 	optional Amount partial_msat = 15;
+	optional string invstr = 16;
 }
 
 message PayResponse {

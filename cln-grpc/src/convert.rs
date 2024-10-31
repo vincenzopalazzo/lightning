@@ -4390,11 +4390,11 @@ impl From<requests::PayRequest> for pb::PayRequest {
     fn from(c: requests::PayRequest) -> Self {
         Self {
             amount_msat: c.amount_msat.map(|f| f.into()), // Rule #2 for type msat?
-            bolt11: c.bolt11, // Rule #2 for type string
             description: c.description, // Rule #2 for type string?
             // Field: Pay.exclude
             exclude: c.exclude.map(|arr| arr.into_iter().map(|i| i.into()).collect()).unwrap_or(vec![]), // Rule #3
             exemptfee: c.exemptfee.map(|f| f.into()), // Rule #2 for type msat?
+            invstr: c.invstr, // Rule #2 for type string?
             label: c.label, // Rule #2 for type string?
             localinvreqid: c.localinvreqid.map(|v| hex::decode(v).unwrap()), // Rule #2 for type hex?
             maxdelay: c.maxdelay.map(|v| v.into()), // Rule #2 for type u16?
@@ -5777,10 +5777,10 @@ impl From<pb::PayRequest> for requests::PayRequest {
     fn from(c: pb::PayRequest) -> Self {
         Self {
             amount_msat: c.amount_msat.map(|a| a.into()), // Rule #1 for type msat?
-            bolt11: c.bolt11, // Rule #1 for type string
             description: c.description, // Rule #1 for type string?
             exclude: Some(c.exclude.into_iter().map(|s| s.into()).collect()), // Rule #4
             exemptfee: c.exemptfee.map(|a| a.into()), // Rule #1 for type msat?
+            invstr: c.invstr, // Rule #1 for type string?
             label: c.label, // Rule #1 for type string?
             localinvreqid: c.localinvreqid.map(|v| hex::encode(v)), // Rule #1 for type hex?
             maxdelay: c.maxdelay.map(|v| v as u16), // Rule #1 for type u16?
