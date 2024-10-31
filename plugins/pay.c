@@ -1216,7 +1216,7 @@ static struct command_result *json_pay(struct command *cmd,
 				       const jsmntok_t *params)
 {
 	struct payment *p;
-	const char *b11str;
+	const char *invstr;
 	struct bolt11 *b11;
 	char *b11_fail, *b12_fail;
 	u64 *maxfee_pct_millionths;
@@ -1239,7 +1239,7 @@ static struct command_result *json_pay(struct command *cmd,
 	 * initialized directly that way. */
 	if (!param_check(cmd, buf, params,
 		   /* FIXME: parameter should be invstring now */
-		   p_req("bolt11", param_invstring, &b11str),
+		   p_req("invstring", param_invstring, &invstr),
 		   p_opt("amount_msat", param_msat, &msat),
 		   p_opt("label", param_string, &label),
 		   p_opt_def("riskfactor", param_millionths,
@@ -1260,17 +1260,17 @@ static struct command_result *json_pay(struct command *cmd,
 		return command_param_failed();
 
 	p = payment_new(cmd, cmd, NULL /* No parent */, global_hints, paymod_mods);
-	p->invstring = tal_steal(p, b11str);
+	p->invstring = tal_steal(p, invstr);
 	p->description = tal_steal(p, description);
 	/* Overridded by bolt12 if present */
 	p->blindedpath = NULL;
 	p->blindedpay = NULL;
 
-	paymod_log(p, LOG_INFORM, "Paying invoice bolt11=%s", b11str);
+	paymod_log(p, LOG_INFORM, "Paying invoice bolt11=%s", invstr);
 
-	if (!bolt12_has_prefix(b11str)) {
+	if (!bolt12_has_prefix(invstr)) {
 		b11 =
-		    bolt11_decode(tmpctx, b11str, plugin_feature_set(cmd->plugin),
+		    bolt11_decode(tmpctx, invstr, plugin_feature_set(cmd->plugin),
 				  description, chainparams, &b11_fail);
 		if (b11 == NULL)
 			return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
@@ -1301,7 +1301,7 @@ static struct command_result *json_pay(struct command *cmd,
 			    "Invalid bolt11:"
 			    " sets feature var_onion with no secret");
 	} else {
-		b12 = invoice_decode(tmpctx, b11str, strlen(b11str),
+		b12 = invoice_decode(tmpctx, invstr, strlen(invstr),
 				     plugin_feature_set(cmd->plugin),
 				     chainparams, &b12_fail);
 		if (b12 == NULL)

@@ -2774,6 +2774,7 @@
             "Pay.description": 12,
             "Pay.exclude": 10,
             "Pay.exemptfee": 7,
+            "Pay.invstr": 16,
             "Pay.label": 3,
             "Pay.localinvreqid": 14,
             "Pay.localofferid": 9,
@@ -9926,6 +9927,10 @@
         },
         "Pay.exemptfee": {
             "added": "pre-v0.10.1",
+            "deprecated": null
+        },
+        "Pay.invstr": {
+            "added": "v24.11",
             "deprecated": null
         },
         "Pay.label": {
