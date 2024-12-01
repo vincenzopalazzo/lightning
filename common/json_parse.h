@@ -8,6 +8,7 @@
 /* Simple helpers are here: this file contains heavier ones */
 #include <common/json_parse_simple.h>
 #include <common/jsonrpc_errors.h>
+#include <bitcoin/tx.h>
 
 struct json_escape;
 struct json_stream;
@@ -109,6 +110,10 @@ bool json_to_msat(const char *buffer, const jsmntok_t *tok,
 /* Extract a bitcoin txid from this */
 bool json_to_txid(const char *buffer, const jsmntok_t *tok,
 		  struct bitcoin_txid *txid);
+
+/* Extract a bitcoin tx from this */
+bool json_to_tx(const char *buffer, const jsmntok_t *tok,
+		struct bitcoin_tx **tx);
 
 /* Extract a bitcoin outpoint from this */
 bool json_to_outpoint(const char *buffer, const jsmntok_t *tok,

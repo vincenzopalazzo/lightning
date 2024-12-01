@@ -140,6 +140,15 @@ msgdata,openingd_fundee,remote_shutdown_len,u16,
 msgdata,openingd_fundee,remote_shutdown_scriptpubkey,u8,remote_shutdown_len
 msgdata,openingd_fundee,channel_type,channel_type,
 
+# Communicate the Funding Tx to master
+msgtype,openingd_on_funding_tx,6045
+msgdata,openingd_on_funding_tx,tx,bitcoin_tx,
+msgdata,openingd_on_funding_tx,channel_id,channel_id,
+
+# Get a reply from master -> openingd
+msgtype,openingd_on_funding_tx_reply,6145
+msgdata,openingd_on_funding_tx_reply,tx,bitcoin_tx,
+
 # master -> openingd: do you have a memleak?
 msgtype,openingd_dev_memleak,6033
 

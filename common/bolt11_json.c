@@ -121,4 +121,9 @@ void json_add_bolt11(struct json_stream *response,
 
 	json_add_string(response, "signature",
 			fmt_secp256k1_ecdsa_signature(tmpctx, &b11->sig));
+
+	// FIXME(vincenzopalazzo): adding tag RGB information
+	//
+	// 1. Adds `rgb_amt`
+	// 2. Adds `rgb_contract_id`
 }
