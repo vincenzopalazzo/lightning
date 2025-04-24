@@ -6,6 +6,7 @@ BITCOIN_SRC :=					\
 	bitcoin/chainparams.c			\
 	bitcoin/feerate.c			\
 	bitcoin/locktime.c			\
+	bitcoin/message.c			\
 	bitcoin/preimage.c			\
 	bitcoin/privkey.c			\
 	bitcoin/psbt.c				\
@@ -26,6 +27,7 @@ BITCOIN_HEADERS := bitcoin/address.h		\
 	bitcoin/chainparams.h			\
 	bitcoin/feerate.h			\
 	bitcoin/locktime.h			\
+	bitcoin/message.h			\
 	bitcoin/preimage.h			\
 	bitcoin/privkey.h			\
 	bitcoin/psbt.h				\

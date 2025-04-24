@@ -78,12 +78,16 @@ PLUGIN_FUNDER_OBJS := $(PLUGIN_FUNDER_SRC:.c=.o)
 PLUGIN_RECKLESSRPC_SRC := plugins/recklessrpc.c
 PLUGIN_RECKLESSRPC_OBJS := $(PLUGIN_RECKLESSRPC_SRC:.c=.o)
 
+PLUGIN_MSGAUTH_SRC := plugins/msgauth.c
+PLUGIN_MSGAUTH_OBJS := $(PLUGIN_MSGAUTH_SRC:.c=.o)
+
 PLUGIN_ALL_SRC :=				\
 	$(PLUGIN_AUTOCLEAN_SRC)			\
 	$(PLUGIN_chanbackup_SRC)		\
 	$(PLUGIN_BCLI_SRC)			\
 	$(PLUGIN_COMMANDO_SRC)			\
 	$(PLUGIN_FUNDER_SRC)			\
+	$(PLUGIN_MSGAUTH_SRC)			\
 	$(PLUGIN_TOPOLOGY_SRC)			\
 	$(PLUGIN_EXPOSESECRET_SRC)		\
 	$(PLUGIN_KEYSEND_SRC)			\
@@ -110,6 +114,7 @@ C_PLUGINS :=					\
 	plugins/bcli				\
 	plugins/commando			\
 	plugins/funder				\
+	plugins/msgauth				\
 	plugins/topology			\
 	plugins/exposesecret			\
 	plugins/keysend				\
@@ -249,6 +254,8 @@ plugins/funder: bitcoin/psbt.o common/psbt_open.o $(PLUGIN_FUNDER_OBJS) $(PLUGIN
 plugins/recover:  common/gossmap.o common/sciddir_or_pubkey.o common/fp16.o $(PLUGIN_RECOVER_OBJS) $(PLUGIN_LIB_OBJS) $(PLUGIN_COMMON_OBJS) $(JSMN_OBJS)
 
 plugins/recklessrpc: $(PLUGIN_RECKLESSRPC_OBJS) $(PLUGIN_LIB_OBJS) $(PLUGIN_COMMON_OBJS) $(JSMN_OBJS)
+
+plugins/msgauth: $(PLUGIN_MSGAUTH_OBJS) $(PLUGIN_LIB_OBJS) $(PLUGIN_COMMON_OBJS) $(JSMN_OBJS) bitcoin/message.o
 
 # This covers all the low-level list RPCs which return simple arrays
 SQL_LISTRPCS := listchannels listforwards listhtlcs listinvoices listnodes listoffers listpeers listpeerchannels listclosedchannels listtransactions listsendpays bkpr-listaccountevents bkpr-listincome
