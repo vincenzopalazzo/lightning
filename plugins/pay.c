@@ -1304,6 +1304,8 @@ static struct command_result *json_pay(struct command *cmd,
 		   /* FIXME: parameter should be invstring now */
 		   p_req("bolt11", param_invstring, &b11str),
 		   p_opt("amount_msat", param_msat, &msat),
+	           // FIXME(vincenzopalazzo): adds the rgb_amount value that
+	           // can be (maybe) optional inside the invoice.
 		   p_opt("label", param_string, &label),
 		   p_opt_def("riskfactor", param_millionths,
 			     &riskfactor_millionths, 10000000),
@@ -1364,6 +1366,7 @@ static struct command_result *json_pay(struct command *cmd,
 			    "Invalid bolt11:"
 			    " sets feature var_onion with no secret");
 	} else {
+		// FIXME(vincenzopalazzo): fails if it is an bolt12 offer.
 		b12 = invoice_decode(tmpctx, b11str, strlen(b11str),
 				     plugin_feature_set(cmd->plugin),
 				     chainparams, &b12_fail);

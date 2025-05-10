@@ -1484,6 +1484,9 @@ static struct command_result *json_decode(struct command *cmd,
 
 	response = jsonrpc_stream_success(cmd);
 	json_add_string(response, "type", decodable->type);
+	// FIXME(vincenzopalazzo): To decode an RGB invoice we should
+	// make sure that the RGB is only supported in the bolt11,
+	// otherwise throws an error.
 	if (decodable->offer)
 		json_add_offer(cmd, response, decodable->offer);
 	if (decodable->invreq)

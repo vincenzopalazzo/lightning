@@ -427,6 +427,7 @@ static bool uses_witness(const struct wally_tx *wtx)
 {
 	size_t i;
 
+	assert(wtx);
 	for (i = 0; i < wtx->num_inputs; i++) {
 		if (wtx->inputs[i].witness)
 			return true;

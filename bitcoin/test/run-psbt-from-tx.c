@@ -115,6 +115,23 @@ int main(int argc, char *argv[])
 	assert(final_scriptsig->value_len > 0);
 	assert(tx2->psbt->inputs[0].final_witness != NULL);
 
+	char *hex_tx = "0200000001882d49b841cb341defb60509f5863b163d32d1a819545761d31420cbf9db94d60000000000f8858a80024a01000000000000220020b6d8d2f575683f606ece57e33f59eaa146152f5c7163fb3e917b3cd19b6a558038073ba40b00000022002076f0b18b3c072222fd000432a309620dd43dfb776ab3fd710c9bda5efb0235f49c49c120";
+	tx = bitcoin_tx_from_hex(tmpctx, hex_tx, strlen(hex_tx));
+	psbt_input_get_amount(tx->psbt, 0);
+
+	msg = tal_arr(tmpctx, u8, 0);
+	/* convert to wire format */
+	towire_bitcoin_tx(&msg, tx);
+
+	len = tal_bytelen(msg);
+	assert(len > 0);
+
+	tx2 = fromwire_bitcoin_tx(tmpctx,
+				  cast_const2(const u8 **, &msg), &len);
+	assert(tx2 != NULL);
+
+	psbt_input_get_amount(tx2->psbt, 0);
+
 	common_shutdown();
 	return 0;
 }

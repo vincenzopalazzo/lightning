@@ -677,7 +677,7 @@ static void openchannel_hook_serialize(struct openchannel_hook_payload *payload,
 
 /* openingd dies?  Remove openingd ptr from payload */
 static void openchannel_payload_remove_openingd(struct subd *openingd,
-					    struct openchannel_hook_payload *payload)
+						struct openchannel_hook_payload *payload)
 {
 	assert(payload->openingd == openingd);
 	payload->openingd = NULL;
@@ -862,6 +862,94 @@ static void opening_got_offer(struct subd *openingd,
 	plugin_hook_call_openchannel(openingd->ld, NULL, payload);
 }
 
+struct onfunding_channel_tx_hook_payload {
+	struct subd *openingd;
+	struct bitcoin_tx *tx;
+	struct channel_id *cid;
+};
+
+static void onfunding_channel_tx_hook_final(struct onfunding_channel_tx_hook_payload *payload STEALS)
+{
+	struct subd *openingd = payload->openingd;
+	log_info(openingd->log, "from hook sending the tx %s", fmt_bitcoin_tx(tmpctx, payload->tx));
+	// FIXME(bitfinix): manage the errors!
+	subd_send_msg(openingd,
+		      take(towire_openingd_on_funding_tx_reply(NULL, payload->tx)));
+}
+
+static void onfunding_channel_tx_hook_serialize(struct onfunding_channel_tx_hook_payload *payload,
+						struct json_stream *stream,
+						struct plugin *plugin)
+{
+	struct bitcoin_txid txid;
+
+	bitcoin_txid(payload->tx, &txid);
+	json_object_start(stream, "onfunding_channel_tx");
+	json_add_tx(stream, "tx", payload->tx);
+	json_add_txid(stream, "txid", &txid);
+	json_add_psbt(stream, "psbt", payload->tx->psbt);
+	json_add_channel_id(stream, "channel_id", payload->cid);
+	json_object_end(stream);
+}
+
+static bool onfunding_channel_tx_hook_deserialize(struct onfunding_channel_tx_hook_payload *payload,
+						  const char *buffer,
+						  const jsmntok_t *toks)
+{
+	const jsmntok_t *result_tok, *error_tok,
+		*tx_tok, *psbt_tok;
+
+	if ((error_tok = json_get_member(buffer, toks, "error")) != NULL)
+		fatal("Plugin returned an error inside the response to the"
+		      " onfunding_channel_tx hook: %.*s",
+		      toks[0].end - toks[0].start, buffer + toks[0].start);
+
+	if ((result_tok = json_get_member(buffer, toks, "result")) == NULL)
+		fatal("Plugin returned an invalid response (missing result) to the"
+		      " onfunding_channel_tx hook: %.*s",
+		      toks[0].end - toks[0].start, buffer + toks[0].start);
+
+	if ((tx_tok = json_get_member(buffer, result_tok, "tx")) == NULL)
+		fatal("Plugin returned an invalid response (missing tx) to the"
+		      " onfunding_channel_tx hook: %.*s",
+		      toks[0].end - toks[0].start, buffer + toks[0].start);
+
+	if ((psbt_tok = json_get_member(buffer, result_tok, "psbt")) == NULL)
+		fatal("Plugin returned an invalid response (missing psbt) to the"
+		      " onfunding_channel_tx hook: %.*s",
+		      toks[0].end - toks[0].start, buffer + toks[0].start);
+
+	if (!json_to_tx(buffer, tx_tok, &payload->tx))
+		fatal("Plugin returned an invalid (json to tx) response to the"
+		      " onfunding_channel_tx hook: %.*s",
+		      tx_tok[0].end - tx_tok[0].start, buffer + tx_tok[0].start);
+
+	payload->tx->psbt = json_to_psbt(buffer, buffer, psbt_tok);
+	return true;
+}
+
+REGISTER_PLUGIN_HOOK(onfunding_channel_tx,
+		     onfunding_channel_tx_hook_deserialize,
+		     onfunding_channel_tx_hook_final,
+		     onfunding_channel_tx_hook_serialize,
+		     struct onfunding_channel_tx_hook_payload *);
+
+
+static char *opening_on_funding_tx(struct subd *openingd, const u8 *msg)
+{
+	struct onfunding_channel_tx_hook_payload *payload;
+	payload = tal(openingd, struct onfunding_channel_tx_hook_payload);
+	payload->cid = tal(payload, struct channel_id);
+	payload->tx = tal(payload, struct bitcoin_tx);
+	payload->openingd = openingd;
+
+	if (!fromwire_openingd_on_funding_tx(msg, msg, &payload->tx, payload->cid))
+		return tal_fmt(tmpctx, "Unexpected encoding of openingd_on_funding_tx msg: %s",
+			       tal_hex(tmpctx, msg));
+	plugin_hook_call_onfunding_channel_tx(openingd->ld, NULL, payload);
+	return NULL;
+}
+
 static unsigned int openingd_msg(struct subd *openingd,
 				 const u8 *msg, const int *fds)
 {
@@ -902,13 +990,20 @@ static unsigned int openingd_msg(struct subd *openingd,
 	case WIRE_OPENINGD_GOT_OFFER:
 		opening_got_offer(openingd, msg, uc);
 		return 0;
-
+	case WIRE_OPENINGD_ON_FUNDING_TX:
+		const char *err;
+		if ((err = opening_on_funding_tx(openingd, msg)) != NULL) {
+			log_debug(openingd->log, "Unexpected error while handling on funding tx: %s", err);
+			return 1;
+		}
+		return 0;
 	/* We send these! */
 	case WIRE_OPENINGD_INIT:
 	case WIRE_OPENINGD_FUNDER_START:
 	case WIRE_OPENINGD_FUNDER_COMPLETE:
 	case WIRE_OPENINGD_FUNDER_CANCEL:
 	case WIRE_OPENINGD_GOT_OFFER_REPLY:
+	case WIRE_OPENINGD_ON_FUNDING_TX_REPLY:
 	case WIRE_OPENINGD_DEV_MEMLEAK:
 	/* Replies never get here */
 	case WIRE_OPENINGD_DEV_MEMLEAK_REPLY:

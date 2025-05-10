@@ -210,6 +210,13 @@ If you encrypt your `hsm_secret`, you will have to pass the `--encrypted-hsm` st
 
 Developers wishing to contribute should start with the developer guide [here](doc/contribute-to-core-lightning/coding-style-guidelines.md).
 
+### RGB Support
+
+This is an experiemental branch that implement the RGB support in core lightning.
+
+It is still a reseach project, so if you would like to help or look inside
+the work that it is currently done, please run `git grep -n "TODO(bitfinix):"`
+
 [blockstream-store-blog]: https://blockstream.com/2018/01/16/en-lightning-charge/
 [std]: https://github.com/lightning/bolts
 [prs-badge]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat
