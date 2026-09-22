@@ -3,6 +3,7 @@
  * saves and funding tx watching for a channel open */
 
 #include "config.h"
+#include <bitcoin/feerate.h>
 #include <ccan/array_size/array_size.h>
 #include <ccan/cast/cast.h>
 #include <ccan/mem/mem.h>
@@ -1037,6 +1038,14 @@ static void dual_funding_found(struct lightningd *ld,
 				 &inflight->funding->outpoint,
 				 loc))
 		return;
+
+	/* This inflight is the one the chain chose: record it now, so
+	 * anyone consulting the channel before we finish catching up
+	 * with the chain (e.g. a reconnecting peer) sees the mined
+	 * funding tx, not the latest RBF attempt. */
+	if (inflight->channel->state == DUALOPEND_AWAITING_LOCKIN)
+		update_channel_from_inflight(ld, inflight->channel,
+					     inflight, false);
 
 	/* Otherwise, watch for block depth increases (we'll immediately expect one) */
 	watch_blockdepth(inflight, ld->topology, loc->blkheight,
@@ -2587,8 +2596,14 @@ json_openchannel_bump(struct command *cmd,
 	 *     down.
 	 */
 	last_feerate_perkw = channel_last_funding_feerate(channel);
-	next_feerate_min = last_feerate_perkw * 25 / 24;
-	assert(next_feerate_min > last_feerate_perkw);
+	/* Whatever is stored could be absurd, in which case there is no next
+	 * feerate to bump to.  Fail the command rather than the daemon. */
+	if (!next_funding_feerate(last_feerate_perkw, &next_feerate_min))
+		return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
+				    "Can't calculate the next feerate: the"
+				    " last funding feerate recorded for this"
+				    " channel (%u) is out of range",
+				    last_feerate_perkw);
 	if (!info->feerate_per_kw_funding) {
 		info->feerate_per_kw_funding = tal(info, u32);
 		*info->feerate_per_kw_funding = next_feerate_min;
@@ -2599,6 +2614,16 @@ json_openchannel_bump(struct command *cmd,
 				    " you proposed %u",
 				    next_feerate_min,
 				    *info->feerate_per_kw_funding);
+
+	/* We fund this, so it's our money: don't let the 25/24 escalation
+	 * (or an ambitious caller) carry us past the most we'll pay. */
+	if (*info->feerate_per_kw_funding > our_feerate_max(cmd->ld, NULL))
+		return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
+				    "Feerate %u is above the most we'll pay"
+				    " (%u); the last attempt was at %u",
+				    *info->feerate_per_kw_funding,
+				    our_feerate_max(cmd->ld, NULL),
+				    last_feerate_perkw);
 
 	/* BOLT #2:
 	 *  - if both nodes advertised `option_support_large_channel`:
@@ -4208,6 +4233,7 @@ bool peer_start_dualopend(struct peer *peer,
 	/* FIXME: We should override this to 0 in the openchannel2 hook of we want zeroconf*/
 	channel->minimum_depth = peer->ld->config.funding_confirms;
 
+	/* dualopend applies ignore_fee_limits itself, so these stay honest. */
 	msg = towire_dualopend_init(NULL, chainparams,
 				    peer->ld->our_features,
 				    peer->their_features,
@@ -4217,6 +4243,10 @@ bool peer_start_dualopend(struct peer *peer,
 				    &channel->local_basepoints,
 				    &channel->local_funding_pubkey,
 				    channel->minimum_depth,
+				    feerate_min(peer->ld, NULL),
+				    feerate_max(peer->ld, NULL),
+				    channel->ignore_fee_limits
+				    || peer->ld->config.ignore_fee_limits,
 				    peer->ld->config.require_confirmed_inputs,
 				    *channel->alias[LOCAL],
 				    peer->ld->dev_any_channel_type);
@@ -4285,7 +4315,15 @@ bool peer_restart_dualopend(struct peer *peer,
 		       &max_to_self_delay,
 		       &min_effective_htlc_capacity);
 
-	inflight = channel_current_inflight(channel);
+	/* If a funding tx already confirmed, it is not necessarily the
+	 * latest inflight: reestablish using the one the chain chose. */
+	if (channel->scid)
+		inflight = channel_inflight_find(channel,
+						 &channel->funding.txid);
+	else
+		inflight = NULL;
+	if (!inflight)
+		inflight = channel_current_inflight(channel);
 	assert(inflight);
 	blockheight = get_blockheight(channel->blockheight_states,
 				      channel->opener, LOCAL);
@@ -4316,6 +4354,10 @@ bool peer_restart_dualopend(struct peer *peer,
 				      &channel->local_funding_pubkey,
 				      &channel->channel_info.remote_fundingkey,
 				      channel->minimum_depth,
+				      feerate_min(peer->ld, NULL),
+				      feerate_max(peer->ld, NULL),
+				      channel->ignore_fee_limits
+				      || peer->ld->config.ignore_fee_limits,
 				      &inflight->funding->outpoint,
 				      inflight->funding->feerate,
 				      channel->funding_sats,

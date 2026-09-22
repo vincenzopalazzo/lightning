@@ -455,6 +455,7 @@ static void opening_funder_finished(struct subd *openingd, const u8 *resp,
 
 	/* Watch for funding confirms */
 	channel_watch_funding(ld, channel);
+	channel_watch_inflight_outs(ld, channel);
 
 	if (pbase)
 		wallet_penalty_base_add(ld->wallet, channel->dbid, pbase);
@@ -572,6 +573,7 @@ static void opening_fundee_finished(struct subd *openingd,
 				 &channel->funding.txid));
 
 	channel_watch_funding(ld, channel);
+	channel_watch_inflight_outs(ld, channel);
 
 	/* Tell plugins about the success */
 	notify_channel_opened(ld, &channel->peer->id, &channel->funding_sats,
@@ -1001,13 +1003,9 @@ bool peer_start_openingd(struct peer *peer, struct peer_fd *peer_fd)
 		       &max_to_self_delay,
 		       &min_effective_htlc_capacity);
 
-	if (peer->ld->config.ignore_fee_limits) {
-		minrate = 1;
-		maxrate = 0xFFFFFFFF;
-	} else {
-		minrate = feerate_min(peer->ld, NULL);
-		maxrate = feerate_max(peer->ld, NULL);
-	}
+	/* openingd applies ignore_fee_limits itself, so these stay honest. */
+	minrate = feerate_min(peer->ld, NULL);
+	maxrate = feerate_max(peer->ld, NULL);
 
 	msg = towire_openingd_init(NULL,
 				   chainparams,
@@ -1020,6 +1018,7 @@ bool peer_start_openingd(struct peer *peer, struct peer_fd *peer_fd)
 				   &uc->local_funding_pubkey,
 				   uc->minimum_depth,
 				   minrate, maxrate,
+				   peer->ld->config.ignore_fee_limits,
 				   peer->ld->dev_force_tmp_channel_id,
 				   peer->ld->config.allowdustreserve,
 				   peer->ld->dev_any_channel_type);
@@ -1778,6 +1777,7 @@ static struct command_result *json_recoverchannel(struct command *cmd,
 
 		/* Watch the Funding */
 		channel_watch_funding(ld, channel);
+		channel_watch_inflight_outs(ld, channel);
 
 		json_add_channel_id(response, NULL, &scb_chan->cid);
 	}

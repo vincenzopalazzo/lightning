@@ -66,7 +66,8 @@
             "payment_hash",
             "status",
             "amount_sent_msat",
-            "created_at"
+            "created_at",
+            "groupid"
           ],
           "properties": {
             "created_index": {
@@ -193,8 +194,7 @@
     "The following error codes may occur:",
     "",
     "- -32602: Parameter missed or malformed;",
-    "- 211: Payment status mismatch. Check the correct status via **paystatus**;",
-    "- 208: Payment with payment_hash not found."
+    "- 208: Payment with payment_hash not found, or without the given status (and partid/groupid)."
   ],
   "author": [
     "Vincenzo Palazzo [vincenzo.palazzo@protonmail.com](mailto:vincenzo.palazzo@protonmail.com) is mainly responsible."

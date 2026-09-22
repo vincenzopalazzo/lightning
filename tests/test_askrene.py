@@ -213,6 +213,13 @@ def test_layers(node_factory):
     expect['channel_updates'] = []
     assert l2.rpc.askrene_listlayers('test_layers') == {'layers': [expect]}
 
+    # askrene should reject invalid inform channel types
+    with pytest.raises(RpcError, match=r"invalid token"):
+        l2.rpc.askrene_inform_channel('test_layers',
+                                      '0x0x1/1',
+                                      100000,
+                                      'imadethisup')
+
     # We can tell it about made up channels...
     first_timestamp = int(time.time())
     l2.rpc.askrene_inform_channel('test_layers',
@@ -469,9 +476,8 @@ def test_node_bias_rpc(node_factory):
 def test_node_bias_persistence(node_factory):
     """Test node bias persistence."""
     # remove xpay, since it creates a layer!
-    l1, l2 = node_factory.line_graph(
-        2, wait_for_announce=True, opts={"disable-plugin": "cln-xpay"}
-    )
+    l1 = node_factory.get_node(opts={"disable-plugin": "cln-xpay"})
+    node_id = "020000000000000000000000000000000000000000000000000000000000000001"
 
     expect = {
         "layer": "mylayer",
@@ -486,24 +492,36 @@ def test_node_bias_persistence(node_factory):
     }
     l1.rpc.askrene_create_layer(layer="mylayer", persistent=True)
     r = l1.rpc.askrene_bias_node(
-        layer="mylayer", node=l2.info["id"], direction="out", bias=14, relative=False
+        layer="mylayer", node=node_id, direction="out", bias=14, relative=False
     )
     expect["node_biases"] = [
         {
-            "node": l2.info["id"],
+            "node": node_id,
             "in_bias": 0,
             "out_bias": 14,
             "timestamp": r["node_biases"][0]["timestamp"],
         }
     ]
+    r = l1.rpc.askrene_bias_channel(
+        layer="mylayer", short_channel_id_dir="1x1x1/1", bias=10,
+        relative=False, description="some channel bias"
+    )
+    expect["biases"] = [
+        {
+            "short_channel_id_dir": "1x1x1/1",
+            "bias": 10,
+            "description": "some channel bias",
+            "timestamp": r["biases"][0]["timestamp"],
+        }
+    ]
     assert l1.rpc.askrene_listlayers("mylayer") == {"layers": [expect]}
     # restarting the node we see the same data again
-    l2.restart()
+    l1.restart()
     assert l1.rpc.askrene_listlayers("mylayer") == {"layers": [expect]}
 
     r = l1.rpc.askrene_bias_node(
         layer="mylayer",
-        node=l2.info["id"],
+        node=node_id,
         direction="in",
         bias=11,
         relative=False,
@@ -511,7 +529,7 @@ def test_node_bias_persistence(node_factory):
     )
     expect["node_biases"] = [
         {
-            "node": l2.info["id"],
+            "node": node_id,
             "in_bias": 11,
             "out_bias": 14,
             "timestamp": r["node_biases"][0]["timestamp"],
@@ -521,7 +539,36 @@ def test_node_bias_persistence(node_factory):
     assert l1.rpc.askrene_listlayers("mylayer") == {"layers": [expect]}
 
     # restarting the node we see the same data again
-    l2.restart()
+    l1.restart()
+    assert l1.rpc.askrene_listlayers("mylayer") == {"layers": [expect]}
+
+    # zero bias is like not having any
+    l1.rpc.askrene_bias_node(
+        layer="mylayer",
+        node=node_id,
+        direction="in",
+        bias=0,
+        relative=False,
+        description="adding zero bias",
+    )
+    # zero bias is like not having any
+    l1.rpc.askrene_bias_node(
+        layer="mylayer",
+        node=node_id,
+        direction="out",
+        bias=0,
+        relative=False,
+        description="adding zero bias",
+    )
+    l1.rpc.askrene_bias_channel(
+        layer="mylayer", short_channel_id_dir="1x1x1/1", bias=0, relative=False
+    )
+    expect["node_biases"] = []
+    expect["biases"] = []
+    assert l1.rpc.askrene_listlayers("mylayer") == {"layers": [expect]}
+
+    # restarting the node we see the same data again
+    l1.restart()
     assert l1.rpc.askrene_listlayers("mylayer") == {"layers": [expect]}
 
 
@@ -880,6 +927,52 @@ def test_getroutes(node_factory):
                             'cltv_out': 99}]])
 
 
+def test_getroutes_maxhops(node_factory):
+    """maxhops is a hard cap, not a preference.
+
+    A line of channels has only one route. Asking for fewer hops than that
+    route must fail, and asking for exactly that many must succeed. xpay
+    uses this so a blinded tail still fits in the 1300-byte onion.
+    """
+    gsfile, nodemap = generate_gossip_store([
+        GenChannel(0, 1),
+        GenChannel(1, 2),
+        GenChannel(2, 3),
+        GenChannel(3, 4),
+    ])
+    l1 = node_factory.get_node(gossip_store_file=gsfile.name)
+
+    with pytest.raises(RpcError, match=r"could not find|usable set of paths|excessive"):
+        l1.rpc.getroutes(source=nodemap[0],
+                         destination=nodemap[4],
+                         amount_msat=1000,
+                         layers=[],
+                         maxfee_msat=100000,
+                         final_cltv=10,
+                         maxhops=2)
+
+    routes = l1.rpc.getroutes(source=nodemap[0],
+                              destination=nodemap[4],
+                              amount_msat=1000,
+                              layers=[],
+                              maxfee_msat=100000,
+                              final_cltv=10,
+                              maxhops=4)
+    assert len(routes['routes']) >= 1
+    for r in routes['routes']:
+        assert len(r['path']) <= 4
+
+    # Zero is the default: no hop limit.
+    routes = l1.rpc.getroutes(source=nodemap[0],
+                              destination=nodemap[4],
+                              amount_msat=1000,
+                              layers=[],
+                              maxfee_msat=100000,
+                              final_cltv=10,
+                              maxhops=0)
+    assert len(routes['routes'][0]['path']) == 4
+
+
 def test_getroutes_single_path(node_factory):
     """Test getroutes generating single path payments"""
     gsfile, nodemap = generate_gossip_store(
@@ -911,13 +1004,13 @@ def test_getroutes_single_path(node_factory):
         l1,
         nodemap[1],
         nodemap[2],
-        10000000,
+        9100000,
         [
             [
                 {
                     "short_channel_id_dir": "3x2x2/1",
                     "node_id_out": nodemap[2],
-                    "amount_in_msat": 10000010,
+                    "amount_in_msat": 9100009,
                     "cltv_in": 99 + 6,
                 }
             ]
@@ -944,19 +1037,19 @@ def test_getroutes_single_path(node_factory):
         l1,
         nodemap[0],
         nodemap[2],
-        10000000,
+        9100000,
         [
             [
                 {
                     "short_channel_id_dir": "0x1x0/1",
                     "node_id_out": nodemap[1],
-                    "amount_in_msat": 10000020,
+                    "amount_in_msat": 9100018,
                     "cltv_in": 99 + 6 + 6,
                 },
                 {
                     "short_channel_id_dir": "3x2x2/1",
                     "node_id_out": nodemap[2],
-                    "amount_in_msat": 10000010,
+                    "amount_in_msat": 9100009,
                     "cltv_in": 99 + 6,
                 },
             ]
@@ -1213,6 +1306,41 @@ def test_getroutes_auto_localchans(node_factory):
                          paths=[[{'short_channel_id_dir': scid21dir, 'amount_in_msat': 102010, 'cltv_in': 99 + 6 + 6},
                                  {'short_channel_id_dir': f'0x1x0/{dir01}', 'amount_in_msat': 102010, 'cltv_in': 99 + 6 + 6},
                                  {'short_channel_id_dir': f'2x2x1/{dir12}', 'amount_in_msat': 101000, 'cltv_in': 99 + 6}]])
+
+
+@unittest.skipIf(os.getenv('TEST_DB_PROVIDER', 'sqlite3') != 'sqlite3',
+                 "deletes database, which is assumed sqlite3")
+def test_getroutes_ignores_recovery_stubs(node_factory):
+    l1, l2, l3, l4 = node_factory.get_nodes(4)
+
+    # Three stubs guarantee that at least two have the same direction.  Since
+    # every recovery stub has SCID 1x1x1, askrene used to abort while adding
+    # the second such channel to its no-duplicates additional-cost table.
+    l1.fundchannel(l2, 100000)
+    l1.fundchannel(l3, 100000)
+    l1.fundchannel(l4, 100000)
+    scb = l1.rpc.staticbackup()['scb']
+
+    l2.stop()
+    l3.stop()
+    l4.stop()
+    l1.stop()
+    os.unlink(os.path.join(l1.daemon.lightning_dir,
+                           TEST_NETWORK,
+                           'lightningd.sqlite3'))
+    l1.start()
+    assert len(l1.rpc.recoverchannel(scb)['stubs']) == 3
+
+    with pytest.raises(RpcError):
+        l1.rpc.getroutes(source=l1.info['id'],
+                         destination=l2.info['id'],
+                         amount_msat=1000,
+                         layers=['auto.localchans'],
+                         maxfee_msat=1000,
+                         final_cltv=9)
+
+    # A route cannot be found, but the recovery stubs must not crash askrene.
+    assert l1.rpc.getinfo()['id'] == l1.info['id']
 
 
 def test_fees_dont_exceed_constraints(node_factory):

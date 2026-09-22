@@ -273,7 +273,8 @@ invoice_payment_hooks_done(struct invoice_payment_hook_payload *payload STEALS)
 	/* If invoice gets paid meanwhile (plugin responds out-of-order?) then
 	 * we can also fail */
 	if (!invoices_find_by_label(ld->wallet->invoices, &inv_dbid, payload->label)) {
-		htlc_set_fail(payload->set, NULL);
+		if (payload->set)
+			htlc_set_fail(payload->set, NULL);
 		return;
 	}
 
@@ -970,7 +971,8 @@ void invoice_check_onchain_payment(struct lightningd *ld,
 
 	details = invoices_get_details(tmpctx, ld->wallet->invoices, inv_dbid);
 
-	if (amount_msat_less(msat, *details->msat)) {
+	/* details->msat is NULL if they specified "any": any amount will do. */
+	if (details->msat && amount_msat_less(msat, *details->msat)) {
 		// notify_underpaid_onchain_invoice();
 		return;
 	}

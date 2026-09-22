@@ -46,7 +46,9 @@
             "created_channels",
             "channel_updates",
             "constraints",
-            "impressions"
+            "impressions",
+            "biases",
+            "node_biases"
           ],
           "properties": {
             "layer": {
@@ -218,7 +220,7 @@
                   "timestamp": {
                     "type": "u64",
                     "description": [
-                      "The UNIX timestamp when this constraint was created."
+                      "The UNIX timestamp when this impression was created."
                     ]
                   },
                   "amount_msat": {

@@ -394,14 +394,23 @@ static void log_to_files(const char *log_prefix,
 {
 	char tstamp[sizeof("YYYY-mm-ddTHH:MM:SS.nnnZ ")];
 	char *entry, nodestr[hex_str_size(PUBKEY_CMPR_LEN)];
-	char buf[sizeof("%s%s%s %s-%s: %s\n")
+	/* Entries are usually small, so a stack buffer is fine; but a
+	 * peer can make us log arbitrarily large strings (e.g. clnrest
+	 * logging unauthenticated request parameters), which must not
+	 * be allocated on the stack! */
+	char sbuf[1024];
+	char *buf = sbuf;
+	size_t buf_len = sizeof("%s%s%s %s-%s: %s\n")
 		 + strlen(log_prefix)
 		 + sizeof(tstamp)
 		 + strlen(level_prefix(level))
 		 + sizeof(nodestr)
 		 + strlen(entry_prefix)
-		 + str_len];
+		 + str_len;
 	bool filtered;
+
+	if (buf_len > sizeof(sbuf))
+		buf = tal_arr(tmpctx, char, buf_len);
 
 	if (print_timestamps) {
 		char iso8601_msec_fmt[sizeof("YYYY-mm-ddTHH:MM:SS.%03dZ ")];
@@ -431,15 +440,15 @@ static void log_to_files(const char *log_prefix,
 		size_t len;
 		entry = buf;
 		if (!node_id)
-			len = snprintf(buf, sizeof(buf),
+			len = snprintf(buf, buf_len,
 				       "%s%s%s %s: %.*s\n",
 				       log_prefix, tstamp, level_prefix(level), entry_prefix, (int)str_len, str);
 		else
-			len = snprintf(buf, sizeof(buf), "%s%s%s %s-%s: %.*s\n",
+			len = snprintf(buf, buf_len, "%s%s%s %s-%s: %.*s\n",
 				       log_prefix, tstamp, level_prefix(level),
 				       nodestr,
 				       entry_prefix, (int)str_len, str);
-		assert(len < sizeof(buf));
+		assert(len < buf_len);
 	}
 
 	/* In complex configurations, we tell loggers to overshare: then we
@@ -1223,6 +1232,30 @@ struct command_result *param_loglevel(struct command *cmd,
 				     "'unusual'");
 }
 
+/* The io log contains raw JSON-RPC and plugin traffic, which can contain
+ * secrets (such as runes), and getlog returns the entire log book: so we
+ * don't serve io here.  It's still available in the log file, for those who
+ * run with --log-level=io. */
+static struct command_result *param_getloglevel(struct command *cmd,
+						const char *name,
+						const char *buffer,
+						const jsmntok_t *tok,
+						enum log_level **level)
+{
+	struct command_result *ret;
+
+	ret = param_loglevel(cmd, name, buffer, tok, level);
+	if (ret)
+		return ret;
+
+	if (**level == LOG_IO_IN || **level == LOG_IO_OUT)
+		return command_fail_badparam(cmd, name, buffer, tok,
+					     "io logs are not available here:"
+					     " use --log-level=io and read the"
+					     " log file");
+	return NULL;
+}
+
 static struct command_result *json_getlog(struct command *cmd,
 					  const char *buffer,
 					  const jsmntok_t *obj UNNEEDED,
@@ -1233,7 +1266,7 @@ static struct command_result *json_getlog(struct command *cmd,
 	struct log_book *log_book = cmd->ld->log_book;
 
 	if (!param(cmd, buffer, params,
-		   p_opt_def("level", param_loglevel, &minlevel, LOG_INFORM),
+		   p_opt_def("level", param_getloglevel, &minlevel, LOG_INFORM),
 		   NULL))
 		return command_param_failed();
 

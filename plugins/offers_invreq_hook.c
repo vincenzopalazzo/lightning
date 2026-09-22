@@ -563,10 +563,23 @@ static struct command_result *check_period(struct command *cmd,
 		u64 end = offer_period_start(basetime, period_idx + 1,
 					     invreq_recurrence(ir->invreq));
 
+		if (end <= start) {
+			return fail_invreq(cmd, ir,
+					   "period_index %"PRIu64" bad period",
+					   period_idx);
+		}
+		/* Paywindow can outlive the period; remaining time is then 0. */
+		if (*ir->inv->invoice_created_at >= end) {
+			return fail_invreq(cmd, ir,
+					   "period_index %"PRIu64
+					   " too late (ended %"PRIu64")",
+					   period_idx,
+					   end);
+		}
 		if (*ir->inv->invoice_created_at > start) {
 			*ir->inv->invoice_amount
-				*= (double)((*ir->inv->invoice_created_at - start)
-					    / (end - start));
+				*= ((double)end - *ir->inv->invoice_created_at)
+					    / (end - start);
 			/* Round up to make it non-zero if necessary. */
 			if (*ir->inv->invoice_amount == 0)
 				*ir->inv->invoice_amount = 1;
@@ -791,8 +804,18 @@ static struct command_result *handle_amount_and_recurrence(struct command *cmd,
 
 	/* Don't allow invoices past expiry of offer. */
 	if (ir->invreq->offer_absolute_expiry) {
-		u64 until = *ir->invreq->offer_absolute_expiry
-			- *ir->inv->invoice_created_at;
+		u64 until;
+
+		/* listoffers_done checked *ir->invreq->offer_absolute_expiry > now,
+		 * then invreq_for_invreq set *ir->inv->invoice_created_at = now.
+		 * Time could change between those, so set a minimum */
+		if (*ir->invreq->offer_absolute_expiry
+		    > *ir->inv->invoice_created_at)
+			until = *ir->invreq->offer_absolute_expiry
+				- *ir->inv->invoice_created_at;
+		else
+			/* Not 0: we use that for cancelled invoices! */
+			until = 1;
 		if (until < rel_expiry)
 			rel_expiry = until;
 	}

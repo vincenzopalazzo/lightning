@@ -1765,8 +1765,15 @@ def test_onchain_rbf_stops_after_confirmation(node_factory, bitcoind):
         bitcoind.generate_block(1)
         l2.daemon.wait_for_log('RBF onchain txid')
 
-    # Stop censoring.  Generate a block to trigger rebroadcast (the penalty tx
-    # enters bitcoind's mempool) but filter it out so the next block mines it.
+    # Stop censoring — but only once all four censored broadcasts (initial
+    # penalty tx plus three replacements) have reached the proxy: each 'RBF
+    # onchain txid' log line precedes the corresponding broadcast, and
+    # un-mocking while one is in flight lets an old version into bitcoind's
+    # real mempool, where it gets mined in place of the version the node
+    # tracks (#9347).  The proxy counts the calls its mock swallows.
+    # Then generate a block to trigger rebroadcast (the penalty tx enters
+    # bitcoind's mempool) but filter it out so the next block mines it.
+    wait_for(lambda: l2.daemon.rpcproxy.mock_counts['sendrawtransaction'] >= 4)
     l2.daemon.rpcproxy.mock_rpc('sendrawtransaction', None)
     bitcoind.generate_block(1, needfeerate=10000000)
     l2.daemon.wait_for_log('RBF onchain txid')
@@ -2154,6 +2161,176 @@ def test_onchain_timeout(node_factory, bitcoind, executor, chainparams, anchors)
         check_utxos_channel(l2, [channel_id], expected_2, tags)
 
 
+@unittest.skipIf(TEST_NETWORK != 'regtest', 'must be able to invalidate blocks')
+def test_onchaind_reorg_child_tx(node_factory, bitcoind):
+    """onchaind must keep watching after a tx it was watching is reorged out.
+
+    A zero-depth callback kills the channel owner, which frees every watch
+    which hangs off it.  Only the funding spend watch survives, and it doesn't
+    fire again when the reorg removed a descendant of the commitment tx rather
+    than the commitment tx itself, so something else has to restart onchaind.
+
+    """
+    # We track channel balances, to verify that restarting onchaind doesn't
+    # double-record anything.
+    coin_mvt_plugin = os.path.join(os.getcwd(), 'tests/plugins/coin_movements.py')
+
+    # Non-anchor, so the HTLC timeout tx has a fixed fee and can't be RBFed
+    # out from under us.
+    opts = {'dev-force-features': "-23", 'plugin': coin_mvt_plugin}
+
+    # HTLC 1->2, 1 fails just after it's irrevocably committed
+    disconnects = ['+WIRE_REVOKE_AND_ACK*3', 'permfail']
+    # Feerates identical so we don't get gratuitous commit to update them
+    l1, l2 = node_factory.line_graph(2,
+                                     opts=[{**opts, **{'disconnect': disconnects,
+                                                       'feerates': (7500, 7500, 7500, 7500)}},
+                                           opts])
+
+    channel_id = first_channel_id(l1, l2)
+
+    inv = l2.rpc.invoice(10**8, 'onchaind_reorg', 'desc')
+    rhash = inv['payment_hash']
+    # We underpay, so it fails.
+    routestep = {
+        'amount_msat': 10**8 - 1,
+        'id': l2.info['id'],
+        'delay': 5,
+        'channel': first_scid(l1, l2)
+    }
+
+    l1.rpc.sendpay([routestep], rhash, payment_secret=inv['payment_secret'], groupid=1)
+    with pytest.raises(RpcError):
+        l1.rpc.waitsendpay(rhash)
+
+    # Different CLTVs, or onchaind matches the onchain HTLC to the failed one.
+    bitcoind.generate_block(1)
+    sync_blockheight(bitcoind, [l1])
+
+    # Second one will cause drop to chain.
+    l1.rpc.sendpay([routestep], rhash, payment_secret=inv['payment_secret'], groupid=2)
+
+    # l1 will drop to chain.
+    l1.daemon.wait_for_log('permfail')
+    l1.wait_for_channel_onchain(l2.info['id'])
+    bitcoind.generate_block(1)
+    l1.daemon.wait_for_log(' to ONCHAIN')
+
+    # Could happen any order.
+    ((_, txid1, blocks1), (_, htlc_txid, blocks2)) = \
+        l1.wait_for_onchaind_txs(('OUR_DELAYED_RETURN_TO_WALLET',
+                                  'OUR_UNILATERAL/DELAYED_OUTPUT_TO_US'),
+                                 ('OUR_HTLC_TIMEOUT_TX',
+                                  'OUR_UNILATERAL/OUR_HTLC'))
+    assert blocks1 == 4
+    assert blocks2 == 5
+
+    bitcoind.generate_block(4)
+    bitcoind.generate_block(1, wait_for_mempool=txid1)
+    htlc_txid = l1.mine_txid_or_rbf(htlc_txid)
+
+    # It sees the HTLC timeout tx, and starts waiting to sweep its output.
+    _, _, blocks = l1.wait_for_onchaind_tx('OUR_DELAYED_RETURN_TO_WALLET',
+                                           'OUR_HTLC_TIMEOUT_TX/DELAYED_OUTPUT_TO_US')
+    assert blocks == 4
+
+    htlc_block = bitcoind.rpc.getrawtransaction(htlc_txid, True)['blockhash']
+    htlc_height = bitcoind.rpc.getblock(htlc_block)['height']
+
+    # Now reorg out *only* the block containing the HTLC timeout tx: the
+    # commitment tx stays confirmed, so the funding spend watch never fires.
+    # We can't use bitcoind.simple_reorg() here: it re-mines the mempool, so
+    # the HTLC timeout tx would come straight back.
+    bitcoind.rpc.invalidateblock(htlc_block)
+    bitcoind.wait_for_log(r'InvalidChainFound: invalid block=.*  height={}'
+                          .format(htlc_height))
+    addr = bitcoind.rpc.getnewaddress()
+    for _ in range(2):
+        bitcoind.rpc.generateblock(addr, [])
+    sync_blockheight(bitcoind, [l1])
+
+    l1.daemon.wait_for_log('Chain reorganization!')
+
+    # onchaind must come back, and own the channel again.
+    l1.daemon.wait_for_log('Restarting onchaind')
+    wait_for(lambda: only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels']).get('owner') == 'onchaind')
+
+    # And it must be watching: it re-proposes the HTLC timeout spend...
+    _, htlc_txid, _ = l1.wait_for_onchaind_tx('OUR_HTLC_TIMEOUT_TX',
+                                              'OUR_UNILATERAL/OUR_HTLC')
+    htlc_txid = l1.mine_txid_or_rbf(htlc_txid)
+
+    # ... and sees it spend the HTLC output again.
+    _, sweep_txid, blocks = l1.wait_for_onchaind_tx('OUR_DELAYED_RETURN_TO_WALLET',
+                                                    'OUR_HTLC_TIMEOUT_TX/DELAYED_OUTPUT_TO_US')
+    assert blocks == 4
+    bitcoind.generate_block(4)
+    bitcoind.generate_block(1, wait_for_mempool=sweep_txid)
+
+    # Which means the channel actually gets resolved.
+    bitcoind.generate_block(99)
+    l1.daemon.wait_for_log('onchaind complete, forgetting peer')
+
+    # Restarting onchaind re-runs the bookkeeping in onchaind_funding_spent(),
+    # exactly as a lightningd restart does: it must still balance.
+    assert account_balance(l1, channel_id) == 0
+    assert account_balance(l2, channel_id) == 0
+
+
+@unittest.skipIf(TEST_NETWORK != 'regtest', 'must be able to invalidate blocks')
+def test_onchaind_reorg_commitment_tx(node_factory, bitcoind):
+    """A reorg of the commitment tx must restart onchaind exactly once.
+
+    The funding output watch is owned by the channel, not by onchaind, so it
+    survives the teardown and starts onchaind again once the commitment tx is
+    mined elsewhere.  We must not also restart it ourselves, or we'd have two
+    onchaind processes signing spends for one channel.
+
+    """
+    l1, l2 = node_factory.line_graph(2, opts={'dev-force-features': "-23",
+                                              'may_reconnect': True,
+                                              'dev-no-reconnect': None})
+
+    l1.rpc.disconnect(l2.info['id'], force=True)
+    commit_txid = only_one(l1.rpc.close(l2.info['id'], 1)['txids'])
+
+    bitcoind.generate_block(1, wait_for_mempool=commit_txid)
+    l1.daemon.wait_for_log(' to ONCHAIN')
+    wait_for(lambda: only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels']).get('owner') == 'onchaind')
+
+    commit_block = bitcoind.rpc.getrawtransaction(commit_txid, True)['blockhash']
+    commit_height = bitcoind.rpc.getblock(commit_block)['height']
+
+    # Reorg out the commitment tx itself, replacing it with empty blocks.
+    bitcoind.rpc.invalidateblock(commit_block)
+    bitcoind.wait_for_log(r'InvalidChainFound: invalid block=.*  height={}'
+                          .format(commit_height))
+    addr = bitcoind.rpc.getnewaddress()
+    for _ in range(2):
+        bitcoind.rpc.generateblock(addr, [])
+    sync_blockheight(bitcoind, [l1])
+
+    l1.daemon.wait_for_log('Chain reorganization!')
+
+    # There's no confirmed funding spend to replay, so we leave it to the
+    # funding output watch, which fires when the commitment tx is mined again.
+    wait_for(lambda: only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels']).get('owner') is None)
+
+    bitcoind.generate_block(1, wait_for_mempool=commit_txid)
+    wait_for(lambda: only_one(l1.rpc.listpeerchannels(l2.info['id'])['channels']).get('owner') == 'onchaind')
+    # ie. it came back through onchaind_funding_spent(), not the reorg path:
+    # two onchaind on one channel would sign conflicting spends.
+    assert not l1.daemon.is_in_log('Restarting onchaind')
+
+    # And it still resolves.
+    _, txid, blocks = l1.wait_for_onchaind_tx('OUR_DELAYED_RETURN_TO_WALLET',
+                                              'OUR_UNILATERAL/DELAYED_OUTPUT_TO_US')
+    bitcoind.generate_block(blocks)
+    bitcoind.generate_block(1, wait_for_mempool=txid)
+    bitcoind.generate_block(99)
+    l1.daemon.wait_for_log('onchaind complete, forgetting peer')
+
+
 @pytest.mark.parametrize("anchors", [False, True])
 def test_onchain_middleman_simple(node_factory, bitcoind, chainparams, anchors):
     if chainparams['elements'] and anchors:
@@ -2283,6 +2460,84 @@ def test_onchain_middleman_simple(node_factory, bitcoind, chainparams, anchors):
         chan2_id = first_channel_id(l2, l3)
         tags = check_utxos_channel(l2, [channel_id, chan2_id], expected_2)
         check_utxos_channel(l1, [channel_id, chan2_id], expected_1, tags)
+
+
+def test_onchain_middleman_fulfill_after_fail(node_factory, bitcoind):
+    """An onchain preimage beats a failure we haven't finished removing.
+
+    l3 gets two HTLCs with the same payment hash and fails one of them, but
+    disconnects before that removal is irrevocably committed, so its
+    commitment still contains both.  It then drops onchain, and claims them
+    once it learns the preimage: l2 must fulfill both incoming HTLCs.
+    """
+    hold_plugin = os.path.join(os.getcwd(), 'tests/plugins/htlc_accepted-hold.py')
+
+    # l3 disconnects as it sends the commitment_signed containing the
+    # failure: it sends one for each HTLC it's given, then that one.
+    l1, l2, l3 = node_factory.get_nodes(3,
+                                        opts=[{}, {},
+                                              {'plugin': hold_plugin,
+                                               'disconnect': ['+WIRE_COMMITMENT_SIGNED*3']}])
+
+    l2.rpc.connect(l1.info['id'], 'localhost', l1.port)
+    l2.rpc.connect(l3.info['id'], 'localhost', l3.port)
+    l2.fundchannel(l1, 10**6)
+    c23, _ = l2.fundchannel(l3, 10**6)
+
+    # l3 needs funds of its own to pay for its onchain claims.
+    l3.fundwallet(10**6)
+
+    # Make sure routes finalized.
+    mine_funding_to_announce(bitcoind, [l1, l2, l3])
+    l1.wait_channel_active(c23)
+
+    # Give l1 some money to play with.
+    l2.pay(l1, 4 * 10**8)
+
+    # Must be bigger than dust, and different so we can tell them apart.
+    amt1, amt2 = 10**8, 9 * 10**7
+    preimage = '00' * 31 + '01'
+    inv = l3.rpc.invoice(amt1 + amt2, 'middleman', 'desc', preimage=preimage)
+    rhash = inv['payment_hash']
+
+    # l3 holds onto this one: we choose when it learns the preimage.
+    l1.rpc.sendpay(l1.single_route(l3.info['id'], amt1), rhash,
+                   amount_msat=amt1 + amt2,
+                   payment_secret=inv['payment_secret'],
+                   partid=1, groupid=1)
+    l3.daemon.wait_for_log('holding htlc {}'.format(rhash))
+
+    # And it fails this one.
+    l1.rpc.sendpay(l1.single_route(l3.info['id'], amt2), rhash,
+                   amount_msat=amt1 + amt2,
+                   payment_secret=inv['payment_secret'],
+                   partid=2, groupid=1)
+    l3.daemon.wait_for_log('failing htlc {}'.format(rhash))
+    l3.daemon.wait_for_log(r'dev_disconnect: \+WIRE_COMMITMENT_SIGNED')
+
+    # l2 has the failure, but can't pass it on: both HTLCs are still live.
+    l2.daemon.wait_for_log('peer_in WIRE_UPDATE_FAIL_HTLC')
+    wait_for(lambda: len(only_one(l2.rpc.listpeerchannels(l3.info['id'])['channels'])['htlcs']) == 2)
+
+    # l3 drops its commitment, which still contains both HTLCs.
+    l3.rpc.close(l2.info['id'], 1)
+    bitcoind.generate_block(1, wait_for_mempool=1)
+    l2.daemon.wait_for_log(' to ONCHAIN')
+    l3.daemon.wait_for_log(' to ONCHAIN')
+
+    # Now l3 learns the preimage, and spends what it's owed.
+    l3.rpc.releasehtlc(preimage)
+    _, txid, _ = l3.wait_for_onchaind_tx('OUR_HTLC_SUCCESS_TX',
+                                         'OUR_UNILATERAL/THEIR_HTLC')
+    bitcoind.generate_block(1, wait_for_mempool=[txid])
+    l2.daemon.wait_for_log('THEIR_UNILATERAL/OUR_HTLC gave us preimage')
+
+    # Both payments must succeed, including the one l3 said it failed.
+    l1.rpc.waitsendpay(rhash, TIMEOUT, partid=1)
+    l1.rpc.waitsendpay(rhash, TIMEOUT, partid=2)
+
+    forwards = l2.rpc.listforwards()['forwards']
+    assert [f['status'] for f in forwards] == ['settled', 'settled']
 
 
 @pytest.mark.parametrize("anchors", [False, True])
@@ -4623,6 +4878,54 @@ def test_anchorspend_using_to_remote(node_factory, bitcoind, anchors):
     bitcoind.generate_block(1, wait_for_mempool=2)
 
 
+@unittest.skipIf(TEST_NETWORK != 'regtest', 'elementsd anchors not supported')
+def test_anchorspend_ignores_immature_coinbase(node_factory, bitcoind, executor):
+    """Fee rescue must not select an immature coinbase: spending one is
+    consensus-invalid, so the resulting anchor spend would be rejected."""
+    # l1 stops responding once it has the fulfill, so l2 has to go onchain
+    # to claim before the incoming HTLC expires.
+    l1, l2 = node_factory.get_nodes(2,
+                                    opts=[{'disconnect': ['-WIRE_REVOKE_AND_ACK*2'],
+                                           'dev-no-reconnect': None,
+                                           'feerates': (1000,) * 4},
+                                          {'feerates': (1000,) * 4}])
+
+    # l2's only wallet output is a block reward it just mined: immature, and
+    # thus unspendable, for the next 100 blocks.
+    coinbase_block = only_one(bitcoind.rpc.generatetoaddress(1, l2.rpc.newaddr('bech32')['bech32']))
+    sync_blockheight(bitcoind, [l1, l2])
+    coinbase_txid = bitcoind.rpc.getblock(coinbase_block)['tx'][0]
+    assert only_one([o for o in l2.rpc.listfunds()['outputs']
+                     if o['txid'] == coinbase_txid])['status'] == 'immature'
+
+    # l1 funds the channel, so l2 acquires no other wallet output.
+    l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
+    l1.fundchannel(l2, 1000000)
+
+    inv = l2.rpc.invoice(200000000, 'stuck', 'stuck')
+    executor.submit(l1.rpc.xpay, inv['bolt11'])
+    l1.daemon.wait_for_log('dev_disconnect: -WIRE_REVOKE_AND_ACK')
+
+    # Now make the commitment tx feerate inadequate, so the close needs a
+    # wallet-funded boost, and mine until l2 hits the HTLC deadline.
+    l2.set_feerates((7500,) * 4)
+    for _ in range(20):
+        bitcoind.generate_block(1)
+        sync_blockheight(bitcoind, [l2])
+        if only_one(l2.rpc.listpeerchannels()['channels'])['state'] == 'AWAITING_UNILATERAL':
+            break
+    wait_for(lambda: only_one(l2.rpc.listpeerchannels()['channels'])['state'] == 'AWAITING_UNILATERAL')
+
+    # The immature coinbase is the only candidate, so there is nothing to
+    # boost with: l2 must say so rather than build an invalid rescue.
+    l2.daemon.wait_for_log('No utxos to bump commit_tx')
+    assert not l2.daemon.is_in_log('Creating anchor spend for local commit tx')
+
+    # And it's still sitting there, unspent.
+    assert only_one([o for o in l2.rpc.listfunds()['outputs']
+                     if o['txid'] == coinbase_txid])['status'] == 'immature'
+
+
 def test_onchain_reestablish_reply(node_factory, bitcoind, executor):
     l1, l2, l3 = node_factory.line_graph(3, opts={'may_reconnect': True,
                                                   'dev-no-reconnect': None})
@@ -4787,3 +5090,72 @@ def test_onchain_close_no_p2tr(node_factory, bitcoind):
 
     # We should see the output.
     assert len(l1.rpc.listfunds()['outputs']) == 2
+
+
+def test_htlc_timeout_during_stfu(node_factory, bitcoind):
+    # Originally authored by claude-fable-5 v2.1.228 (Claude Code)
+
+    """An HTLC that hits its deadline while the channel is quiescent (STFU)
+    must still force-close and get timed out onchain."""
+    plugin = os.path.join(os.getcwd(), 'tests/plugins/hold_htlcs.py')
+
+    # Pin feerates so no update_fee sneaks in and blocks quiescence.
+    # l2 holds any incoming HTLC (hook sleeps), so it stays committed
+    # but unresolved while we mine past its expiry.
+    l1, l2 = node_factory.line_graph(2, opts=[{'dev-no-reconnect': None,
+                                               'feerates': (7500, 7500, 7500, 7500)},
+                                              {'dev-no-reconnect': None,
+                                               'feerates': (7500, 7500, 7500, 7500),
+                                               'plugin': plugin,
+                                               'hold-time': 10000,
+                                               'hold-result': 'continue'}])
+
+    amt = 200000000
+    inv = l2.rpc.invoice(amt, 'stfu_timeout', 'desc')
+
+    # Explicit route: fixed delay, no shadow-route randomness.
+    route = [{'amount_msat': amt,
+              'id': l2.info['id'],
+              'delay': 10,
+              'channel': first_scid(l1, l2)}]
+    l1.rpc.sendpay(route, inv['payment_hash'],
+                   payment_secret=inv['payment_secret'])
+
+    # htlc_accepted hook fires only once the HTLC is irrevocably
+    # committed on both sides, so this means it's fully locked in.
+    l2.daemon.wait_for_log('Holding onto an incoming htlc')
+
+    # Now go quiescent.  A committed-but-unresolved HTLC is not a
+    # "pending update", so STFU completes.
+    l1.rpc.call('dev-quiesce', [l2.info['id']])
+    l1.daemon.wait_for_log('STFU complete: we are quiescent')
+    l2.daemon.wait_for_log('STFU complete: we are quiescent')
+
+    # lightningd fails the channel at height == expiry + 1 (htlc_out_deadline).
+    htlc = only_one(l1.rpc.listhtlcs()['htlcs'])
+    deadline = htlc['expiry'] + 1
+
+    # One block short of the deadline: still quiet.
+    bitcoind.generate_block(deadline - bitcoind.rpc.getblockcount() - 1)
+    sync_blockheight(bitcoind, [l1, l2])
+    time.sleep(3)
+    assert not l1.daemon.is_in_log('hit deadline')
+    assert only_one(l1.rpc.listpeerchannels()['channels'])['state'] == 'CHANNELD_NORMAL'
+
+    # The deadline block: l1 drops to chain despite being in STFU.
+    bitcoind.generate_block(1)
+    l1.daemon.wait_for_log('Offered HTLC 0 SENT_ADD_ACK_REVOCATION cltv {} hit deadline'
+                           .format(htlc['expiry']))
+    l1.daemon.wait_for_log('sendrawtx exit 0')
+
+    # Mine the commitment (anchors may add a CPFP tx alongside it).
+    bitcoind.generate_block(1, wait_for_mempool=1)
+    l1.daemon.wait_for_log(' to ONCHAIN')
+    l2.daemon.wait_for_log(' to ONCHAIN')
+
+    # We're already past expiry, so onchaind times the HTLC out immediately.
+    _, txid, blocks = l1.wait_for_onchaind_tx('OUR_HTLC_TIMEOUT_TX',
+                                              'OUR_UNILATERAL/OUR_HTLC')
+    assert blocks <= 0
+    bitcoind.generate_block(1, wait_for_mempool=txid)
+    l1.daemon.wait_for_log('Resolved OUR_UNILATERAL/OUR_HTLC by our proposal OUR_HTLC_TIMEOUT_TX')

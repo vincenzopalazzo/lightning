@@ -133,6 +133,14 @@
           }
         }
       },
+      "errors": [
+        "On error the returned object will contain `code` and `message` properties, with `code` being one of the following:",
+        "",
+        "- -32602: If the given parameters are wrong.",
+        "- -1: Catchall nonspecific error.",
+        "- 302: The output amount is below the dust limit.",
+        "- 309: The given PSBT is invalid or could not be modified."
+      ],
       "author": [
         "Dusty [@dusty_daemon](mailto:@dustydaemon) is mainly responsible."
       ],
@@ -241,7 +249,7 @@
           "num_removed": {
             "type": "u64",
             "description": [
-              "The number of constraints removed from *layer*"
+              "The number of constraints and impressions removed from *layer*"
             ]
           }
         }
@@ -756,7 +764,9 @@
                 "created_channels",
                 "channel_updates",
                 "constraints",
-                "impressions"
+                "impressions",
+                "biases",
+                "node_biases"
               ],
               "properties": {
                 "layer": {
@@ -928,7 +938,7 @@
                       "timestamp": {
                         "type": "u64",
                         "description": [
-                          "The UNIX timestamp when this constraint was created."
+                          "The UNIX timestamp when this impression was created."
                         ]
                       },
                       "amount_msat": {
@@ -1267,7 +1277,7 @@
                 "timestamp": {
                   "type": "u64",
                   "description": [
-                    "The UNIX timestamp when this constraint was created."
+                    "The UNIX timestamp when this impression was created."
                   ]
                 },
                 "amount_msat": {
@@ -1359,7 +1369,9 @@
                 "created_channels",
                 "channel_updates",
                 "impressions",
-                "constraints"
+                "constraints",
+                "biases",
+                "node_biases"
               ],
               "properties": {
                 "layer": {
@@ -1542,7 +1554,7 @@
                       "timestamp": {
                         "type": "u64",
                         "description": [
-                          "The UNIX timestamp when this constraint was created."
+                          "The UNIX timestamp when this impression was created."
                         ]
                       },
                       "amount_msat": {
@@ -3258,6 +3270,7 @@
                 "our_start_balance_msat",
                 "channel_start_balance_msat",
                 "fees_out_msat",
+                "fees_in_msat",
                 "utilization_out",
                 "utilization_in",
                 "apy_out",
@@ -3977,8 +3990,7 @@
                 "credit_msat",
                 "debit_msat",
                 "currency",
-                "timestamp",
-                "description"
+                "timestamp"
               ],
               "properties": {
                 "account": {
@@ -5898,7 +5910,9 @@
         "It has the useful property that when used with `lightning-cli` and the `escape=csv` it can directly produce valid CSV files."
       ],
       "request": {
-        "required": [],
+        "required": [
+          "format"
+        ],
         "additionalProperties": false,
         "properties": {
           "format": {
@@ -5985,6 +5999,7 @@
       },
       "response": {
         "required": [
+          "format-hint",
           "report"
         ],
         "additionalProperties": false,
@@ -7384,7 +7399,6 @@
           "created_index",
           "payment_hash",
           "status",
-          "description",
           "expires_at"
         ],
         "additionalProperties": false,
@@ -7526,7 +7540,8 @@
         "The following error codes may occur:",
         "",
         "- -1: Catchall nonspecific error.",
-        "- 900: An invoice with the given *label* already exists."
+        "- 900: An invoice with the given *label* already exists.",
+        "- 907: The offer associated with the invoice is not active."
       ],
       "author": [
         "Rusty Russell [rusty@rustcorp.com.au](mailto:rusty@rustcorp.com.au) is mainly responsible."
@@ -8571,7 +8586,9 @@
       },
       "response": {
         "required": [
-          "key"
+          "key",
+          "generation",
+          "hex"
         ],
         "additionalProperties": false,
         "properties": {
@@ -9463,7 +9480,8 @@
                   ],
                   "required": [
                     "period",
-                    "time_unit"
+                    "time_unit",
+                    "compulsory_field"
                   ],
                   "additionalProperties": false,
                   "properties": {
@@ -10095,7 +10113,8 @@
                   ],
                   "required": [
                     "period",
-                    "time_unit"
+                    "time_unit",
+                    "compulsory_field"
                   ],
                   "additionalProperties": false,
                   "properties": {
@@ -11867,7 +11886,9 @@
       },
       "response": {
         "required": [
-          "key"
+          "key",
+          "generation",
+          "hex"
         ],
         "additionalProperties": false,
         "properties": {
@@ -12503,7 +12524,8 @@
                 "payment_hash",
                 "status",
                 "amount_sent_msat",
-                "created_at"
+                "created_at",
+                "groupid"
               ],
               "properties": {
                 "created_index": {
@@ -12630,8 +12652,7 @@
         "The following error codes may occur:",
         "",
         "- -32602: Parameter missed or malformed;",
-        "- 211: Payment status mismatch. Check the correct status via **paystatus**;",
-        "- 208: Payment with payment_hash not found."
+        "- 208: Payment with payment_hash not found, or without the given status (and partid/groupid)."
       ],
       "author": [
         "Vincenzo Palazzo [vincenzo.palazzo@protonmail.com](mailto:vincenzo.palazzo@protonmail.com) is mainly responsible."
@@ -13443,6 +13464,12 @@
           "Note: the returned object is the same format as **listinvoicerequests**."
         ]
       },
+      "errors": [
+        "On failure, one of the following error codes may be returned:",
+        "",
+        "- -32602: Error in given parameters.",
+        "- 1001: invoice_request is already disabled."
+      ],
       "author": [
         "Rusty Russell [rusty@rustcorp.com.au](mailto:rusty@rustcorp.com.au) is mainly responsible."
       ],
@@ -13565,6 +13592,12 @@
           "Note: the returned object is the same format as **listoffers**."
         ]
       },
+      "errors": [
+        "On failure, one of the following error codes may be returned:",
+        "",
+        "- -32602: Error in given parameters.",
+        "- 1001: offer is already disabled."
+      ],
       "author": [
         "Rusty Russell [rusty@rustcorp.com.au](mailto:rusty@rustcorp.com.au) is mainly responsible."
       ],
@@ -13834,7 +13867,8 @@
         "On failure, one of the following error codes may be returned:",
         "",
         "- -32602: Error in given parameters.",
-        "- 1006: offer already enabled."
+        "- 1006: offer already enabled.",
+        "- 1007: offer is single-use and has already been used."
       ],
       "author": [
         "Rusty Russell [rusty@rustcorp.com.au](mailto:rusty@rustcorp.com.au) is mainly responsible."
@@ -14244,6 +14278,7 @@
               "opening_channel_satoshis",
               "mutual_close_satoshis",
               "unilateral_close_satoshis",
+              "unilateral_close_nonanchor_satoshis",
               "htlc_timeout_satoshis",
               "htlc_success_satoshis"
             ],
@@ -15008,7 +15043,8 @@
         "- 301: There are not enough funds in the internal wallet (including fees) to create the transaction.",
         "- 302: The output amount is too small, and would be considered dust.",
         "- 303: Broadcasting of the funding transaction failed, the internal call to bitcoin-cli returned with an error.",
-        "- 313: The `min-emergency-msat` reserve not be preserved (and we have or are opening anchor channels).",
+        "- 304: Still syncing with bitcoin network.",
+        "- 313: The `min-emergency-msat` reserve could not be preserved (and we have or are opening anchor channels).",
         "",
         "Failure may also occur if **lightningd** and the peer cannot agree on channel parameters (funding limits, channel reserves, fees, etc.)."
       ],
@@ -15392,6 +15428,7 @@
         "required": [
           "funding_address",
           "scriptpubkey",
+          "channel_type",
           "warning_usage"
         ],
         "additionalProperties": false,
@@ -15483,7 +15520,6 @@
         "- -1: Catchall nonspecific error.",
         "- 300: The amount exceeded the maximum configured funding amount.",
         "- 301: The provided `push_msat` is greater than the provided `amount`.",
-        "- 304: Still syncing with bitcoin network",
         "- 305: Peer is not connected.",
         "- 306: Unknown peer id.",
         "- 312: Peer negotiated `option_dual_fund`, must use `openchannel_init` not `fundchannel_start`. (Only if ``experimental-dual-fund` is enabled)"
@@ -16087,7 +16123,9 @@
         "",
         "- -32602: If the given parameters are wrong.",
         "- -1: Catchall nonspecific error.",
-        "- 301: Insufficient UTXOs to meet *satoshi* value."
+        "- 301: Insufficient UTXOs to meet *satoshi* value.",
+        "- 304: Still syncing with bitcoin network.",
+        "- 313: The `min-emergency-msat` reserve could not be preserved (and we have or are opening anchor channels)."
       ],
       "author": [
         "Rusty Russell [rusty@rustcorp.com.au](mailto:rusty@rustcorp.com.au) is mainly responsible."
@@ -16663,11 +16701,10 @@
               "unusual",
               "info",
               "debug",
-              "trace",
-              "io"
+              "trace"
             ],
             "description": [
-              "A string that represents the log level."
+              "A string that represents the log level. Note that *io* is not accepted here: the io log contains raw JSON-RPC and plugin traffic (including runes and other secrets), so it is only available in the log file, via *log-level=io*."
             ],
             "default": "*info*"
           }
@@ -17214,7 +17251,7 @@
       "title": "Command for routing a payment",
       "added": "v24.08",
       "description": [
-        "The **getroutes** RPC command attempts to find the best set of paths for the payment from *source* to *destination* of *amount_msat*, using the given *layers* on top of the gossip information.  The result is constrained by *maxfee*, and will arrive at the destination with *final_cltv*.",
+        "The **getroutes** RPC command attempts to find the best set of paths for the payment from *source* to *destination* of *amount_msat*, using the given *layers* on top of the gossip information.  The result is constrained by *maxfee*, and will arrive at the destination with *final_cltv*.  If *maxhops* is set, no returned path is longer than that.",
         "",
         "NOTE: The returned paths are a different format then *getroute*, being more appropriate for creating intermediary onion layers.",
         "",
@@ -17290,6 +17327,14 @@
               "Maximum number of routes in the solution."
             ],
             "default": "100"
+          },
+          "maxhops": {
+            "type": "u32",
+            "added": "v26.09",
+            "description": [
+              "Maximum hops in any returned path. 0 means no limit."
+            ],
+            "default": "0"
           }
         }
       },
@@ -17447,6 +17492,7 @@
         "- 205: Unable to find a route.",
         "- 206: Route too expensive. Either the max_delay or maxfee_msat was exceeded.",
         "- 215: We don't have enough funds in all our channels to pay this.",
+        "- 217: The given *maxdelay* is larger than the maximum allowed.",
         "- 220: We can't find sufficient capacity into the destination."
       ],
       "author": [
@@ -17607,7 +17653,8 @@
       },
       "response": {
         "required": [
-          "help"
+          "help",
+          "format-hint"
         ],
         "additionalProperties": false,
         "properties": {
@@ -18173,8 +18220,7 @@
       ],
       "request": {
         "required": [
-          "amount",
-          "description"
+          "amount"
         ],
         "additionalProperties": false,
         "properties": {
@@ -19797,6 +19843,7 @@
                 "fee_per_millionth",
                 "delay",
                 "htlc_minimum_msat",
+                "htlc_maximum_msat",
                 "features"
               ],
               "properties": {
@@ -20203,6 +20250,7 @@
                 "channel_id",
                 "opener",
                 "private",
+                "channel_type",
                 "total_msat",
                 "total_local_commitments",
                 "total_remote_commitments",
@@ -20583,7 +20631,9 @@
         }
       },
       "response": {
-        "required": [],
+        "required": [
+          "configs"
+        ],
         "additionalProperties": false,
         "properties": {
           "configs": {
@@ -26316,7 +26366,8 @@
                 "payment_hash",
                 "status",
                 "created_at",
-                "created_index"
+                "created_index",
+                "amount_sent_msat"
               ],
               "properties": {
                 "payment_hash": {
@@ -26409,7 +26460,6 @@
                   "then": {
                     "additionalProperties": false,
                     "required": [
-                      "amount_sent_msat",
                       "preimage"
                     ],
                     "properties": {
@@ -26465,9 +26515,7 @@
                   },
                   "then": {
                     "additionalProperties": false,
-                    "required": [
-                      "amount_sent_msat"
-                    ],
+                    "required": [],
                     "properties": {
                       "created_index": {},
                       "updated_index": {},
@@ -26679,11 +26727,12 @@
               "type": "object",
               "additionalProperties": true,
               "required": [
-                "state",
-                "opener",
-                "features",
+                "peer_id",
                 "peer_connected",
-                "peer_id"
+                "state",
+                "channel_type",
+                "opener",
+                "features"
               ],
               "properties": {
                 "peer_id": {
@@ -26986,7 +27035,7 @@
                 "next_feerate": {
                   "type": "string",
                   "description": [
-                    "For inflight opens, the next feerate we'll use for the channel open."
+                    "For inflight opens, the next feerate we'll use for the channel open. Omitted if *last_feerate* admits no valid next feerate, which only a channel written by an older, unbounded version can do."
                   ]
                 },
                 "next_fee_step": {
@@ -27952,8 +28001,7 @@
                     "additionalProperties": false,
                     "required": [
                       "initial_feerate",
-                      "last_feerate",
-                      "next_feerate"
+                      "last_feerate"
                     ],
                     "properties": {
                       "state": {},
@@ -28047,7 +28095,7 @@
                       "next_feerate": {
                         "type": "string",
                         "description": [
-                          "The minimum feerate for the next funding transaction in per-1000-weight, with `kpw` appended."
+                          "The minimum feerate for the next funding transaction in per-1000-weight, with `kpw` appended. Omitted if *last_feerate* admits no valid next feerate."
                         ]
                       }
                     }
@@ -28669,7 +28717,8 @@
               "required": [
                 "id",
                 "connected",
-                "num_channels"
+                "num_channels",
+                "features"
               ],
               "properties": {
                 "id": {
@@ -30508,7 +30557,8 @@
         "required": [
           "tx",
           "txid",
-          "channel_ids"
+          "channel_ids",
+          "failed"
         ],
         "additionalProperties": false,
         "properties": {
@@ -30692,7 +30742,8 @@
         "- 301: There are not enough funds in the internal wallet (including fees) to create the transaction.",
         "- 302: The output amount is too small, and would be considered dust.",
         "- 303: Broadcasting of the funding transaction failed, the internal call to bitcoin-cli returned with an error.",
-        "- 313: The `min-emergency-msat` reserve not be preserved (and we have or are opening anchor channels).",
+        "- 304: Still syncing with bitcoin network.",
+        "- 313: The `min-emergency-msat` reserve could not be preserved (and we have or are opening anchor channels).",
         "",
         "Failure may also occur if **lightningd** and the peer cannot agree on channel parameters (funding limits, channel reserves, fees, etc.). See lightning-fundchannel_start(7) and lightning-fundchannel_complete(7).",
         "",
@@ -30937,7 +30988,9 @@
         "",
         "- -1: Catchall nonspecific error.",
         "- 301: There are not enough funds in the internal wallet (including fees) to create the transaction.",
-        "- 302: The dust limit is not met."
+        "- 302: The dust limit is not met.",
+        "- 304: Still syncing with bitcoin network.",
+        "- 313: The `min-emergency-msat` reserve could not be preserved (and we have anchor channels)."
       ],
       "author": [
         "ZmnSCPxj [ZmnSCPxj@protonmail.com](mailto:ZmnSCPxj@protonmail.com) is mainly responsible."
@@ -31335,6 +31388,7 @@
           "single_use",
           "bolt12",
           "used",
+          "force_paths",
           "created"
         ],
         "additionalProperties": false,
@@ -31599,7 +31653,8 @@
           "channel_type",
           "psbt",
           "commitments_secured",
-          "funding_serial"
+          "funding_serial",
+          "requires_confirmed_inputs"
         ],
         "additionalProperties": false,
         "properties": {
@@ -31902,7 +31957,8 @@
           "psbt",
           "channel_type",
           "commitments_secured",
-          "funding_serial"
+          "funding_serial",
+          "requires_confirmed_inputs"
         ],
         "additionalProperties": false,
         "properties": {
@@ -32001,7 +32057,6 @@
         "- -1: Catchall nonspecific error.",
         "- 300: The amount exceeded the maximum configured funding amount.",
         "- 301: The provided PSBT cannot afford the funding amount.",
-        "- 304: Still syncing with bitcoin network",
         "- 305: Peer is not connected.",
         "- 306: Unknown peer id.",
         "- 309: PSBT missing required fields",
@@ -32495,7 +32550,9 @@
         }
       },
       "response": {
-        "required": [],
+        "required": [
+          "perkw"
+        ],
         "additionalProperties": false,
         "properties": {
           "perkw": {
@@ -32694,6 +32751,7 @@
       "response": {
         "required": [
           "payment_preimage",
+          "destination",
           "payment_hash",
           "created_at",
           "parts",
@@ -33463,6 +33521,12 @@
         "additionalProperties": false,
         "properties": {}
       },
+      "errors": [
+        "On failure, one of the following error codes may be returned:",
+        "",
+        "- -32602: Error in given parameters.",
+        "- 213: The invoice was not preapproved."
+      ],
       "author": [
         "Ken Sedgwick [ken@bonsai.com](mailto:ken@bonsai.com) is mainly responsible."
       ],
@@ -33549,6 +33613,12 @@
         "additionalProperties": false,
         "properties": {}
       },
+      "errors": [
+        "On failure, one of the following error codes may be returned:",
+        "",
+        "- -32602: Error in given parameters.",
+        "- 214: The keysend payment was not preapproved."
+      ],
       "author": [
         "Ken Sedgwick [ken@bonsai.com](mailto:ken@bonsai.com) is mainly responsible."
       ],
@@ -33595,7 +33665,8 @@
       ],
       "request": {
         "required": [
-          "command"
+          "command",
+          "target/subcommand"
         ],
         "additionalProperties": false,
         "properties": {
@@ -33820,6 +33891,13 @@
           }
         }
       },
+      "errors": [
+        "On failure, one of the following error codes may be returned:",
+        "",
+        "- -32602: Error in given parameters.",
+        "- -1: Catchall nonspecific error.",
+        "- 1600: The node is not empty, or recovery is already in progress."
+      ],
       "author": [
         "Rusty Russell [rusty@blockstream.com](mailto:rusty@blockstream.com) is mainly responsible."
       ],
@@ -34035,10 +34113,12 @@
           "payment_preimage",
           "payment_hash",
           "created_at",
+          "groupid",
           "parts",
           "amount_msat",
           "amount_sent_msat",
-          "status"
+          "status",
+          "destination"
         ],
         "additionalProperties": false,
         "properties": {
@@ -34254,8 +34334,10 @@
                 "payment_hash",
                 "created_at",
                 "groupid",
+                "parts",
                 "amount_msat",
-                "status"
+                "status",
+                "destination"
               ],
               "properties": {
                 "bolt11": {
@@ -34798,7 +34880,6 @@
       "response": {
         "required": [
           "label",
-          "description",
           "payment_hash",
           "status",
           "created_index",
@@ -35123,6 +35204,7 @@
         "required": [
           "created_index",
           "id",
+          "groupid",
           "payment_hash",
           "status",
           "created_at",
@@ -35272,7 +35354,9 @@
             },
             "then": {
               "additionalProperties": false,
-              "required": [],
+              "required": [
+                "message"
+              ],
               "properties": {
                 "created_index": {},
                 "id": {},
@@ -35506,6 +35590,7 @@
         "required": [
           "id",
           "created_index",
+          "groupid",
           "payment_hash",
           "status",
           "created_at",
@@ -35920,7 +36005,7 @@
             "added": "v23.08",
             "type": "boolean",
             "description": [
-              "If set to True means to allow the peer to set the commitment transaction fees (or closing transaction fees) to any value they want. This is dangerous: they could set an exorbitant fee (so HTLCs are unenforcable), or a tiny fee (so that commitment transactions cannot be relayed), but avoids channel breakage in case of feerate disagreements. (Note: the global `ignore_fee_limits` setting overrides this)."
+              "If set to True means to allow the peer to set the commitment transaction fees (or closing transaction fees) to any value they want, short of a sanity ceiling of 1000000perkw (4000 sat/vB) which we refuse regardless: a feerate above that means a broken fee estimator rather than a busy mempool. This is dangerous: they could set an exorbitant fee (so HTLCs are unenforcable), or a tiny fee (so that commitment transactions cannot be relayed), but avoids channel breakage in case of feerate disagreements. (Note: the global `ignore_fee_limits` setting overrides this)."
             ]
           }
         }
@@ -37320,6 +37405,21 @@
           }
         }
       },
+      "errors": [
+        "On error the returned object will contain `code` and `message` properties, with `code` being one of the following:",
+        "",
+        "- -32602: If the given parameters are wrong.",
+        "- -1: Catchall nonspecific error.",
+        "- 351: The channel is not owned by this node, or its owner is in an abnormal state.",
+        "- 352: Unknown channel.",
+        "- 353: The channel is not in a state which permits splicing.",
+        "- 354: The peer does not support splicing.",
+        "- 355: Another splice command is already in progress for this channel.",
+        "- 356: The splice PSBT is invalid.",
+        "- 358: The channel is not in a valid state to perform the requested splice operation.",
+        "- 362: The splice was aborted.",
+        "- 363: The channel was disconnected during the splice command."
+      ],
       "usage": [
         "Here is an example set of splice commands that will splice in 100,000 sats to the first channel that comes out of `listpeerchannels`.",
         "",
@@ -37410,7 +37510,6 @@
       ],
       "request": {
         "required": [
-          "channel_id",
           "psbt"
         ],
         "additionalProperties": false,
@@ -37439,7 +37538,8 @@
         "required": [
           "tx",
           "txid",
-          "psbt"
+          "psbt",
+          "outnum"
         ],
         "additionalProperties": false,
         "properties": {
@@ -37470,6 +37570,22 @@
           }
         }
       },
+      "errors": [
+        "On error the returned object will contain `code` and `message` properties, with `code` being one of the following:",
+        "",
+        "- -32602: If the given parameters are wrong.",
+        "- -1: Catchall nonspecific error.",
+        "- 350: The splice transaction could not be broadcast.",
+        "- 351: The channel is not owned by this node, or its owner is in an abnormal state.",
+        "- 352: Unknown channel.",
+        "- 353: The channel is not in a state which permits splicing.",
+        "- 354: The peer does not support splicing.",
+        "- 355: Another splice command is already in progress for this channel.",
+        "- 356: The splice PSBT is invalid.",
+        "- 358: The channel is not in a valid state to perform the requested splice operation.",
+        "- 362: The splice was aborted.",
+        "- 363: The channel was disconnected during the splice command."
+      ],
       "usage": [
         "In this example we funded the psbt from our lightning node, so we can use the lightning node to sign for its funds.",
         "",
@@ -37631,6 +37747,24 @@
           }
         }
       },
+      "errors": [
+        "On error the returned object will contain `code` and `message` properties, with `code` being one of the following:",
+        "",
+        "- -32602: If the given parameters are wrong.",
+        "- -1: Catchall nonspecific error.",
+        "- 351: The channel is not owned by this node, or its owner is in an abnormal state.",
+        "- 352: Unknown channel.",
+        "- 353: The channel is not in a state which permits splicing.",
+        "- 354: The peer does not support splicing.",
+        "- 355: Another splice command is already in progress for this channel.",
+        "- 356: The splice PSBT is invalid.",
+        "- 357: The amount of funds provided for the splice was lower than the amount committed to the peer.",
+        "- 358: The channel is not in a valid state to perform the requested splice operation.",
+        "- 359: The splice feerate is lower than the minimum required.",
+        "- 360: The splice feerate is higher than the configured maximum (use `force_feerate` to override).",
+        "- 362: The splice was aborted.",
+        "- 363: The channel was disconnected during the splice command."
+      ],
       "usage": [
         "Here is an example way to call `splice_update`",
         "",
@@ -37760,7 +37894,10 @@
         }
       },
       "response": {
-        "required": [],
+        "required": [
+          "psbt",
+          "txid"
+        ],
         "properties": {
           "psbt": {
             "type": "string",
@@ -37838,7 +37975,10 @@
         }
       },
       "response": {
-        "required": [],
+        "required": [
+          "psbt",
+          "txid"
+        ],
         "properties": {
           "psbt": {
             "type": "string",
@@ -38460,7 +38600,9 @@
         "",
         "- -1: Catchall nonspecific error.",
         "- 301: There are not enough funds in the internal wallet (including fees) to create the transaction.",
-        "- 302: The dust limit is not met."
+        "- 302: The dust limit is not met.",
+        "- 304: Still syncing with bitcoin network.",
+        "- 313: The `min-emergency-msat` reserve could not be preserved (and we have anchor channels)."
       ],
       "author": [
         "Rusty Russell [rusty@rustcorp.com.au](mailto:rusty@rustcorp.com.au) is mainly responsible."
@@ -38832,6 +38974,14 @@
           }
         }
       },
+      "errors": [
+        "On failure, an error is reported and no transaction is created.",
+        "",
+        "- -1: Catchall nonspecific error.",
+        "- 301: There are not enough funds in the internal wallet (including fees) to create the transaction.",
+        "- 304: Still syncing with bitcoin network.",
+        "- 313: The `min-emergency-msat` reserve could not be preserved (and we have anchor channels)."
+      ],
       "usage": [
         "The caller is trying to buy a liquidity ad but the command keeps failing. They have funds in their wallet, but they're all P2SH-wrapped outputs.",
         "",
@@ -39067,7 +39217,9 @@
         "",
         "- -32602: If the given parameters are wrong.",
         "- -1: Catchall nonspecific error.",
-        "- 301: Insufficient UTXOs to meet *satoshi* value."
+        "- 301: Insufficient UTXOs to meet *satoshi* value.",
+        "- 304: Still syncing with bitcoin network.",
+        "- 313: The `min-emergency-msat` reserve could not be preserved (and we have or are opening anchor channels)."
       ],
       "author": [
         "Rusty Russell [rusty@rustcorp.com.au](mailto:rusty@rustcorp.com.au) is mainly responsible."
@@ -40664,6 +40816,7 @@
         "required": [
           "id",
           "created_index",
+          "groupid",
           "payment_hash",
           "status",
           "created_at",
@@ -40958,7 +41111,8 @@
         "- -1: Catchall nonspecific error.",
         "- 301: There are not enough funds in the internal wallet (including fees) to create the transaction.",
         "- 302: The dust limit is not met.",
-        "- 313: The `min-emergency-msat` reserve not be preserved (and we have anchor channels)."
+        "- 304: Still syncing with bitcoin network.",
+        "- 313: The `min-emergency-msat` reserve could not be preserved (and we have anchor channels)."
       ],
       "author": [
         "Felix [fixone@gmail.com](mailto:fixone@gmail.com) is mainly responsible."
@@ -41656,7 +41810,8 @@
           "credit_msat",
           "debit_msat",
           "timestamp",
-          "primary_tag"
+          "primary_tag",
+          "extra_tags"
         ],
         "properties": {
           "version": {
@@ -43751,11 +43906,11 @@
         "The plugin can:",
         "- accept the payment by returning `{\"result\": \"continue\"}`",
         "- reject the payment with a generic error using `{\"result\": \"reject\"}`",
-        "- reject the payment with a custom BOLT 4 failure message using the `failure_message` field",
+        "- reject the payment with a custom BOLT 4 failure message by returning only the `failure_message` field (i.e. without `result`)",
         "",
-        "If `failure_message` is provided, the payment will be failed with that message.",
-        "If result is \"reject\" and no `failure_message` is provided, the payment fails with `incorrect_or_unknown_payment_details`.",
-        "`failure_message` must NOT be provided when result is \"continue\".",
+        "If only `failure_message` is provided, the payment will be failed with that message.",
+        "If `result` is \"reject\"and no `failure_message` is provided, the payment fails with `incorrect_or_unknown_payment_details`.",
+        "`failure_message` is ignored if `result` is provided.",
         "",
         "Before version 23.11 the msat field was encoded as a string with an 'msat' suffix."
       ],
@@ -43802,9 +43957,7 @@
       },
       "response": {
         "additionalProperties": false,
-        "required": [
-          "result"
-        ],
+        "required": [],
         "properties": {
           "result": {
             "type": "string",
@@ -43815,35 +43968,39 @@
             "description": [
               "Controls whether the payment is accepted or rejected.",
               "\"continue\" accepts the payment.",
-              "\"reject\" fails the payment."
+              "\"reject\" fails the payment with `incorrect_or_unknown_payment_details`."
             ]
           },
           "failure_message": {
             "type": "hex",
             "description": [
               "Optional BOLT 4 failure message.",
-              "Used to provide a specific failure reason when rejecting the payment."
+              "Only used when `result` is absent: the payment is rejected with this failure message.",
+              "Ignored if `result` is present."
             ]
           }
         },
         "if": {
-          "properties": {
-            "result": {
-              "type": "string",
-              "enum": [
-                "reject"
-              ]
-            }
-          },
           "required": [
             "result"
           ]
         },
         "then": {
+          "additionalProperties": false,
+          "required": [],
           "properties": {
-            "failure_message": {
-              "type": "hex"
-            }
+            "result": {},
+            "failure_message": {}
+          }
+        },
+        "else": {
+          "additionalProperties": false,
+          "required": [
+            "failure_message"
+          ],
+          "properties": {
+            "result": {},
+            "failure_message": {}
           }
         }
       },
@@ -43873,6 +44030,9 @@
           "onion_message": {
             "type": "object",
             "additionalProperties": false,
+            "required": [
+              "unknown_fields"
+            ],
             "properties": {
               "reply_blindedpath": {
                 "type": "object",
@@ -43883,6 +44043,10 @@
                   "If present, plugins must use this path if they construct a reply onion message."
                 ],
                 "additionalProperties": false,
+                "required": [
+                  "first_path_key",
+                  "hops"
+                ],
                 "properties": {
                   "first_node_id": {
                     "type": "pubkey",
@@ -44046,7 +44210,8 @@
           "onion_message": {
             "type": "object",
             "required": [
-              "pathsecret"
+              "pathsecret",
+              "unknown_fields"
             ],
             "additionalProperties": false,
             "properties": {
@@ -44068,6 +44233,10 @@
                   "If present, plugins must use this path if they construct a reply onion message."
                 ],
                 "additionalProperties": false,
+                "required": [
+                  "first_path_key",
+                  "hops"
+                ],
                 "properties": {
                   "first_node_id": {
                     "type": "pubkey",

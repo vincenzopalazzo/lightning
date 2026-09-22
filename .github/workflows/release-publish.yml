@@ -35,7 +35,9 @@ jobs:
           trust_level: 5
 
       - name: Set default GPG key
-        run: echo "default-key ${{ steps.gpg.outputs.keyid }}" >> ~/.gnupg/gpg.conf
+        env:
+          GPG_KEYID: ${{ steps.gpg.outputs.keyid }}
+        run: echo "default-key $GPG_KEYID" >> ~/.gnupg/gpg.conf
 
       - name: Sign release
         run: tools/build-release.sh --without-zip sign
@@ -49,9 +51,10 @@ jobs:
 
       - name: Determine release data
         id: release_data
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          CHANGELOG_VERSION=${VERSION#v}
-          VERSION="${{ inputs.version }}"
+          VERSION="$INPUT_VERSION"
           CHANGELOG_VERSION=${VERSION#v}
           CHANGELOG_TITLE=$(grep "## \[${CHANGELOG_VERSION}\]" CHANGELOG.md)
           RELEASE_TITLE=$(echo $CHANGELOG_TITLE | cut -d'"' -f2)

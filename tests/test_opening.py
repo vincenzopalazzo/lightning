@@ -2,11 +2,16 @@ from fixtures import *  # noqa: F401,F403
 from fixtures import TEST_NETWORK
 from pyln.client import RpcError, Millisatoshi
 from utils import (
-    only_one, wait_for, sync_blockheight, first_channel_id, calc_lease_fee, check_coin_moves
+    only_one, wait_for, sync_blockheight, first_channel_id, calc_lease_fee, check_coin_moves,
+    scriptpubkey_addr
 )
 from pyln.testing.utils import FUNDAMOUNT
+from bitcoin.rpc import JSONRPCError
 
 from pathlib import Path
+import coincurve
+import hashlib
+import hmac
 import os
 import pytest
 import re
@@ -18,6 +23,154 @@ import time
 def find_next_feerate(node, peer):
     chan = only_one(node.rpc.listpeerchannels(peer.info['id'])['channels'])
     return chan['next_feerate']
+
+
+CURVE_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+
+def _sha256(*parts):
+    h = hashlib.sha256()
+    for p in parts:
+        h.update(p)
+    return h.digest()
+
+
+def _dsha256(b):
+    return hashlib.sha256(hashlib.sha256(b).digest()).digest()
+
+
+def hkdf_sha256(ikm, salt, info, length):
+    """RFC5869 HKDF-SHA256, matching ccan's hkdf_sha256 (salt is the HMAC key)."""
+    prk = hmac.new(salt if salt is not None else b'', ikm, hashlib.sha256).digest()
+    okm, t, i = b'', b'', 1
+    while len(okm) < length:
+        t = hmac.new(prk, t + info + bytes([i]), hashlib.sha256).digest()
+        okm += t
+        i += 1
+    return okm[:length]
+
+
+def channel_delayed_basepoint_secret(hsm_secret, peer_id, dbid):
+    """Reproduce hsmd's per-channel delayed_payment_basepoint secret.
+
+    hsm_secret[:32] -> channel_base -> channel_seed(peer_id||dbid) -> keys,
+    where keys = HKDF(channel_seed, "c-lightning") laid out as
+    funding|revocation|htlc|payment|delayed|shaseed, each 32 bytes.
+    """
+    channel_base = hkdf_sha256(hsm_secret[:32], None, b"peer seed", 32)
+    salt = peer_id + dbid.to_bytes(8, 'little')
+    channel_seed = hkdf_sha256(channel_base, salt, b"per-peer seed", 32)
+    keys = hkdf_sha256(channel_seed, None, b"c-lightning", 192)
+    return keys[128:160]
+
+
+def _ser_varint(n):
+    if n < 0xfd:
+        return bytes([n])
+    elif n <= 0xffff:
+        return b'\xfd' + n.to_bytes(2, 'little')
+    elif n <= 0xffffffff:
+        return b'\xfe' + n.to_bytes(4, 'little')
+    return b'\xff' + n.to_bytes(8, 'little')
+
+
+def _ser_bytes(b):
+    return _ser_varint(len(b)) + b
+
+
+def derive_simple_pubkey(basepoint, per_commitment_point):
+    """BOLT #3: pubkey = basepoint + SHA256(per_commitment_point || basepoint) * G
+
+    Both args and the result are 33-byte compressed pubkeys.
+    """
+    tweak = _sha256(per_commitment_point, basepoint)
+    tweak_g = coincurve.PublicKey.from_valid_secret(tweak)
+    combined = coincurve.PublicKey.combine_keys([coincurve.PublicKey(basepoint),
+                                                 tweak_g])
+    return combined.format(compressed=True)
+
+
+def derive_revocation_pubkey(revocation_basepoint, per_commitment_point):
+    """BOLT #3 revocationpubkey, a blinded key:
+
+        revocation_basepoint * SHA256(revocation_basepoint || per_commitment_point)
+        + per_commitment_point * SHA256(per_commitment_point || revocation_basepoint)
+    """
+    h1 = _sha256(revocation_basepoint, per_commitment_point)
+    h2 = _sha256(per_commitment_point, revocation_basepoint)
+    term1 = coincurve.PublicKey(revocation_basepoint).multiply(h1, update=False)
+    term2 = coincurve.PublicKey(per_commitment_point).multiply(h2, update=False)
+    return coincurve.PublicKey.combine_keys([term1, term2]).format(compressed=True)
+
+
+def _add_number(num):
+    """Push an integer the way CLN's add_number() (bitcoin/script.c) does."""
+    if num == 0:
+        return bytes([0x00])            # OP_0
+    if num <= 16:
+        return bytes([0x50 + num])      # OP_1 .. OP_16
+    # Minimal little-endian, signed (to_self_delay never needs the sign byte).
+    length = (num.bit_length() + 7) // 8
+    if num >> (length * 8 - 1) & 1:
+        length += 1                     # high bit set: pad to stay positive
+    return bytes([length]) + num.to_bytes(length, 'little')
+
+
+def _push_bytes(data):
+    assert len(data) < 76
+    return bytes([len(data)]) + data
+
+
+def wscript_to_local(to_self_delay, revocationpubkey, local_delayedpubkey):
+    """BOLT #3 to_local witness script (no lease)."""
+    OP_IF, OP_ELSE, OP_ENDIF = 0x63, 0x67, 0x68
+    OP_DROP, OP_CHECKSEQUENCEVERIFY, OP_CHECKSIG = 0x75, 0xb2, 0xac
+    return (bytes([OP_IF])
+            + _push_bytes(revocationpubkey)
+            + bytes([OP_ELSE])
+            + _add_number(to_self_delay)
+            + bytes([OP_CHECKSEQUENCEVERIFY, OP_DROP])
+            + _push_bytes(local_delayedpubkey)
+            + bytes([OP_ENDIF, OP_CHECKSIG]))
+
+
+def p2wsh(wscript):
+    """version-0 P2WSH scriptPubKey: OP_0 <SHA256(wscript)>."""
+    return bytes([0x00, 0x20]) + _sha256(wscript)
+
+
+@unittest.skipIf(TEST_NETWORK != 'regtest', 'elementsd doesnt yet support PSBT features we need')
+@pytest.mark.openchannel('v2')
+def test_v2_open_feerate_out_of_range(node_factory, bitcoind):
+    """We refuse an open_channel2 whose feerates are outside our bounds.
+
+    dualopend was never given min_feerate/max_feerate at all, and the
+    openchannel2 hook only *reports* our limits, so with no plugin hooked
+    nothing enforced them: the opener could name any feerate in either
+    direction and we would sign for it and store it.
+    """
+    # l1 has expensive estimates, l2 has cheap ones, so what l1 proposes is
+    # well above what l2 will put up with.
+    l1 = node_factory.get_node(feerates=(50000, 50000, 50000, 50000))
+    l2 = node_factory.get_node(feerates=(3000, 3000, 3000, 3000),
+                               allow_warning=True)
+
+    assert l2.rpc.feerates('perkw')['perkw']['max_acceptable'] == 30000
+
+    l1.fundwallet(10**7)
+    l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
+
+    # The abort has to name the channel we're opening, or the opener can't
+    # match it up and answers "Unknown channel" instead of failing the open.
+    with pytest.raises(RpcError, match=r'funding_feerate_perkw 50000 above maximum 30000'):
+        l1.rpc.fundchannel(l2.info['id'], 500000)
+
+    l2.daemon.wait_for_log(r'funding_feerate_perkw 50000 above maximum 30000')
+    assert not l1.daemon.is_in_log(r'Unknown channel for WIRE_TX_ABORT')
+
+    # No channel, and nothing stored to trip over later.
+    assert l2.rpc.listpeerchannels()['channels'] == []
+    assert l2.db_query("SELECT count(*) AS c FROM channel_funding_inflights;")[0]['c'] == 0
 
 
 @unittest.skipIf(TEST_NETWORK != 'regtest', 'elementsd doesnt yet support PSBT features we need')
@@ -1418,12 +1571,24 @@ def test_rbf_non_last_mined(node_factory, bitcoind, chainparams):
 
     # Make a 3rd inflight that won't make it into the mempool
     signed_psbt = run_retry()
-    last = len(l1.daemon.logs)
+    # Snapshot the logs only after catching up: len(logs) does not read
+    # new output, so a stale snapshot would match the *2nd* inflight's
+    # "sendrawtx exit 0" and we'd unmock before the 3rd is broadcast.
+    l1.daemon.logs_catchup()
+    l2.daemon.logs_catchup()
+    last1 = len(l1.daemon.logs)
+    last2 = len(l2.daemon.logs)
     l1.rpc.openchannel_signed(chan_id, signed_psbt)
 
-    wait_for(lambda: l1.daemon.is_in_log("plugin-bcli: sendrawtx exit 0", start=last))
+    # Both nodes broadcast the (censored) funding tx, and either request
+    # may still be in flight, so wait for both before unmocking: otherwise
+    # the still-mocked attempt would be forwarded for real and replace the
+    # 2nd inflight in the mempool.
+    wait_for(lambda: l1.daemon.is_in_log("plugin-bcli: sendrawtx exit 0", start=last1))
+    wait_for(lambda: l2.daemon.is_in_log("plugin-bcli: sendrawtx exit 0", start=last2))
     import time
-    time.sleep(.05)
+
+    time.sleep(0.05)
 
     l1.daemon.rpcproxy.mock_rpc('sendrawtransaction', None)
     l2.daemon.rpcproxy.mock_rpc('sendrawtransaction', None)
@@ -1461,6 +1626,148 @@ def test_rbf_non_last_mined(node_factory, bitcoind, chainparams):
     # The funding transaction gets mined (should be the 2nd inflight)
     bitcoind.generate_block(1, wait_for_mempool=1)
     l1.daemon.wait_for_log(r'to ONCHAIN')
+
+
+@unittest.skipIf(TEST_NETWORK != 'regtest', 'elementsd doesnt yet support PSBT features we need')
+@pytest.mark.openchannel('v2')
+def test_rbf_reconnect_non_last_mined(node_factory, bitcoind, chainparams):
+    """
+    Deterministic version of the race in test_rbf_non_last_mined.
+
+    When a non-tip RBF candidate is mined, we identify the mined
+    inflight while processing its block, but only record it on the
+    channel once we have finished catching up with the chain.  A peer
+    reconnecting inside that window reestablishes against the *newest*
+    inflight, locking the channel in with a funding tx that was never
+    mined.
+
+    We hold the window open deterministically: stall l1's fetch of the
+    block after the funding block, so l1 has seen the funding confirm
+    (its scid is set) but never finishes catching up, then reconnect.
+    """
+    l1, l2 = node_factory.get_nodes(2,
+                                    opts={'allow_warning': True,
+                                          'may_reconnect': True})
+
+    l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
+    amount = 2**24
+    chan_amount = 100000
+    bitcoind.rpc.sendtoaddress(l1.rpc.newaddr()['p2tr'], amount / 10**8 + 0.01)
+    bitcoind.generate_block(1)
+    # Wait for it to arrive.
+    wait_for(lambda: len(l1.rpc.listfunds()['outputs']) > 0)
+
+    res = l1.rpc.fundchannel(l2.info['id'], chan_amount, feerate='7500perkw')
+    chan_id = res['channel_id']
+    vins = bitcoind.rpc.decoderawtransaction(res['tx'])['vin']
+    assert only_one(vins)
+    prev_utxos = ["{}:{}".format(vins[0]['txid'], vins[0]['vout'])]
+
+    # Check that we're waiting for lockin
+    l1.daemon.wait_for_log(' to DUALOPEND_AWAITING_LOCKIN')
+    inflights = only_one(l1.rpc.listpeerchannels()['channels'])['inflight']
+    assert inflights[-1]['funding_txid'] in bitcoind.rpc.getrawmempool()
+
+    def run_retry():
+        startweight = 42 + 173
+        rate = int(find_next_feerate(l1, l2)[:-5])
+        # We 2x the feerate to beat the min-relay fee
+        next_feerate = '{}perkw'.format(rate * 2)
+        initpsbt = l1.rpc.utxopsbt(chan_amount, next_feerate, startweight,
+                                   prev_utxos, reservedok=True,
+                                   excess_as_change=True)
+
+        l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
+        bump = l1.rpc.openchannel_bump(chan_id, chan_amount, initpsbt['psbt'])
+        update = l1.rpc.openchannel_update(chan_id, bump['psbt'])
+        assert update['commitments_secured']
+
+        return l1.rpc.signpsbt(update['psbt'])['signed_psbt']
+
+    # Make a second inflight
+    signed_psbt = run_retry()
+    l1.rpc.openchannel_signed(chan_id, signed_psbt)
+
+    # Make it such that l1 and l2 cannot broadcast transactions
+    # (mimics failing to reach the miner with replacement)
+    def censoring_sendrawtx(r):
+        return {'id': r['id'], 'result': {}}
+
+    l1.daemon.rpcproxy.mock_rpc('sendrawtransaction', censoring_sendrawtx)
+    l2.daemon.rpcproxy.mock_rpc('sendrawtransaction', censoring_sendrawtx)
+
+    # Make a 3rd inflight that won't make it into the mempool
+    signed_psbt = run_retry()
+    # Snapshot the logs only after catching up: len(logs) does not read
+    # new output, so a stale snapshot would match the *2nd* inflight's
+    # "sendrawtx exit 0" and we'd unmock before the 3rd is broadcast.
+    l1.daemon.logs_catchup()
+    l2.daemon.logs_catchup()
+    last1 = len(l1.daemon.logs)
+    last2 = len(l2.daemon.logs)
+    l1.rpc.openchannel_signed(chan_id, signed_psbt)
+
+    # Both nodes broadcast the (censored) funding tx, and either request
+    # may still be in flight, so wait for both before unmocking: otherwise
+    # the still-mocked attempt would be forwarded for real and replace the
+    # 2nd inflight in the mempool.
+    wait_for(lambda: l1.daemon.is_in_log("plugin-bcli: sendrawtx exit 0", start=last1))
+    wait_for(lambda: l2.daemon.is_in_log("plugin-bcli: sendrawtx exit 0", start=last2))
+    time.sleep(0.05)
+
+    l1.daemon.rpcproxy.mock_rpc('sendrawtransaction', None)
+    l2.daemon.rpcproxy.mock_rpc('sendrawtransaction', None)
+
+    # We fetch out our inflights list
+    inflights = only_one(l1.rpc.listpeerchannels()['channels'])['inflight']
+    assert len(inflights) == 3
+
+    # l2 goes offline (as in the race, l1's dualopend dies with it)
+    l2.stop()
+
+    # Stall l1's fetch of the block *after* the funding block.  The
+    # mock must hang, not error: an error makes bcli report "no block
+    # yet", which lets l1 conclude it has caught up.  Returning None
+    # passes the request through to the real bitcoind.
+    height = bitcoind.rpc.getblockcount()
+    release_block = threading.Event()
+
+    def stalling_getblockhash(r):
+        if r['params'][0] == height + 2:
+            release_block.wait(timeout=180)
+        return None
+
+    l1.daemon.rpcproxy.mock_rpc('getblockhash', stalling_getblockhash)
+
+    # The 2nd inflight (the mempool tx) gets mined in block height+1.
+    bitcoind.generate_block(2, wait_for_mempool=1)
+
+    # l1 has seen the funding confirm (scid is set), but is wedged
+    # fetching block height+2, so it has not yet recorded *which*
+    # inflight was mined.
+    wait_for(lambda: 'short_channel_id'
+             in only_one(l1.rpc.listpeerchannels()['channels']))
+
+    # l2 comes back fully synced, and reconnects to wedged l1.
+    l2.start()
+    sync_blockheight(bitcoind, [l2])
+    l2.rpc.connect(l1.info['id'], 'localhost', l1.port)
+
+    l1.daemon.wait_for_log(r'to CHANNELD_NORMAL')
+    l2.daemon.wait_for_log(r'to CHANNELD_NORMAL')
+
+    # Let l1 finish catching up before we look at the result.
+    release_block.set()
+    l1.daemon.rpcproxy.mock_rpc('getblockhash', None)
+    sync_blockheight(bitcoind, [l1])
+
+    # The mined inflight (the 2nd) must be the one locked in -- on
+    # both sides, and with its commitment tx.
+    channel = only_one(l1.rpc.listpeerchannels()['channels'])
+    assert channel['funding_txid'] == inflights[1]['funding_txid']
+    assert channel['scratch_txid'] == inflights[1]['scratch_txid']
+    l2_channel = only_one(l2.rpc.listpeerchannels()['channels'])
+    assert l2_channel['funding_txid'] == inflights[1]['funding_txid']
 
 
 @unittest.skipIf(TEST_NETWORK != 'regtest', 'elementsd doesnt yet support PSBT features we need')
@@ -3089,3 +3396,399 @@ def test_no_retransmit_confirmed_funding(node_factory):
     # Should not have attempted (and failed) to re-broadcast the funding tx.
     assert not l1.daemon.is_in_log('Failed to re-transmit funding tx')
     assert not l1.daemon.is_in_log('Successfully rexmitted funding tx')
+
+
+@pytest.mark.openchannel('v2')
+def test_openchannel2_inflight_limit(node_factory, bitcoind):
+    """In-flight open_channel2 negotiations are bounded per peer.
+
+    Each open_channel2 attempt allocates an unsaved channel, HSM state,
+    descriptors and a lightning_dualopend subdaemon. We cap the number of
+    simultaneous in-flight opens per peer (MAX_INFLIGHT_OPENS == 3) and reject
+    the excess with an error, then hang up.
+    """
+    import hashlib
+    import socket
+    import struct
+    import pyln.proto.wire as wire
+    from coincurve import PrivateKey as CCPrivateKey
+
+    MAX_INFLIGHT_OPENS = 3
+
+    def pubkey(index):
+        return CCPrivateKey(index.to_bytes(32, "big")).public_key.format(compressed=True)
+
+    def open_channel2(index, chain_hash):
+        keys = [pubkey(index * 7 + offset + 1) for offset in range(7)]
+        temporary_channel_id = hashlib.sha256(bytes(33) + keys[1]).digest()
+        fixed = b"".join([
+            struct.pack(">H", 64),                     # type: open_channel2
+            chain_hash,
+            temporary_channel_id,
+            struct.pack(">IIQQQQHHI", 253, 253, 100_000, 546,
+                        100_000_000, 0, 6, 30, 0),
+            *keys,
+            b"\x00",                                   # channel_flags
+        ])
+        # opening_tlvs: type 1 channel_type = static_remotekey + anchors.
+        return temporary_channel_id, fixed + bytes.fromhex("0103401000")
+
+    class SocketConn:
+        def __init__(self, host, port):
+            self.sock = socket.create_connection((host, port))
+            self.sock.settimeout(30)
+            self.buf = b""
+
+        def send(self, data):
+            self.sock.sendall(data)
+
+        def recv(self, maxlen):
+            while len(self.buf) < maxlen:
+                chunk = self.sock.recv(maxlen - len(self.buf))
+                if not chunk:
+                    raise ConnectionError("peer closed connection")
+                self.buf += chunk
+            ret, self.buf = self.buf[:maxlen], self.buf[maxlen:]
+            return ret
+
+    # dualopend doesn't listen for the disconnect, so connectd has to force it.
+    l1 = node_factory.get_node(broken_log='Subd did not close, forcing close')
+    chain_hash = bytes.fromhex(bitcoind.rpc.getblockhash(0))[::-1]
+
+    # Speak the transport directly so we can inject raw open_channel2 messages.
+    conn = SocketConn("127.0.0.1", l1.port)
+    lconn = wire.LightningConnection(
+        conn,
+        wire.PublicKey(bytes.fromhex(l1.info["id"])),
+        wire.PrivateKey(bytes([7] * 32)),
+        is_initiator=True,
+    )
+    lconn.shake()
+
+    # Echo l1's init back so OPT_DUAL_FUND negotiates in both directions.
+    init = lconn.read_message()
+    assert int.from_bytes(init[0:2], "big") == 16
+    lconn.send_message(init)
+
+    # Fill the budget, and wait for each open to be accepted before starting
+    # the next: that way every dualopend has finished its openchannel2 hook
+    # roundtrip and is parked, so the count is stable when we overrun it.
+    cids = []
+    for index in range(MAX_INFLIGHT_OPENS):
+        cid, msg = open_channel2(index, chain_hash)
+        cids.append(cid)
+        lconn.send_message(msg)
+        while True:
+            reply = lconn.read_message()
+            if int.from_bytes(reply[0:2], "big") == 65:  # accept_channel2
+                assert reply[2:34] == cid
+                break
+
+    # One more open is over the cap: it must be refused with an error.
+    over_cid, msg = open_channel2(MAX_INFLIGHT_OPENS, chain_hash)
+    lconn.send_message(msg)
+
+    rejected = False
+    for _ in range(50):
+        reply = lconn.read_message()
+        if int.from_bytes(reply[0:2], "big") == 17:  # error
+            assert reply[2:34] == over_cid
+            assert "Too many inflight channel opens" in reply[36:].decode("ascii", "replace")
+            rejected = True
+            break
+    assert rejected, "over-cap open_channel2 was not rejected"
+
+    # And we hang up on them: connectd has already allocated a subd for the
+    # rejected temporary channel id, and dropping the connection is the only
+    # way to reclaim it.
+    with pytest.raises(ConnectionError):
+        for _ in range(50):
+            lconn.read_message()
+
+    # The node itself is still up.
+    assert l1.daemon.proc.poll() is None
+
+
+@unittest.skipIf(TEST_NETWORK != 'regtest', 'address encoding differs on elements')
+@pytest.mark.openchannel('v1')
+def test_zero_length_upfront_shutdown_script(node_factory, bitcoind):
+    """A zero-length upfront_shutdown_script is stored as NULL, not an empty blob.
+
+    BOLT #2 lets a node which negotiated `option_upfront_shutdown_script` send
+    either a real `shutdown_scriptpubkey` or a zero-length one (ie. `0x0000`)
+    meaning "no upfront script".  We send the zero-length form whenever the
+    feature is negotiated and the caller gave no `close_to`, so this is what an
+    ordinary open puts on the wire.  The receiver collapses that to NULL.
+
+    Then keep commitment 0 around and shift 80% of the channel to l2, so the
+    kept commitment is badly out of date.
+
+    l1 then points its shutdown script at commitment 0's own to_local output
+    and publishes that commitment.  Every output now matches a shutdown script
+    l2 has on record, so classifying a funding spend by its outputs alone calls
+    this a mutual close and never penalizes it.  Assert l2 recognises it as a
+    revoked commitment, sweeps it with OUR_PENALTY_TX, and that l1's to_local
+    sweep is dead by the time its CSV matures.
+    """
+    OPT_UPFRONT_SHUTDOWN_SCRIPT = 4
+    STATIC_REMOTEKEY = 12
+    ANCHORS_ZERO_FEE_HTLC_TX = 22
+
+    # l1 drops the connection the instant it has sent WIRE_SHUTDOWN, and won't
+    # reconnect: that guarantees it never follows up with a closing message.
+    # l1 will also broadcast a revoked commitment below, so allow it to fail and
+    # to log the "did *we* cheat?" line its onchaind emits for that.
+    # Neither side reconnects: l1 drops the connection the instant it has sent
+    # WIRE_SHUTDOWN, and with both on dev-no-reconnect the shutdown never turns
+    # into a completed mutual close (which would spend the funding before we can
+    # broadcast the stale commitment).  l1 also broadcasts a revoked commitment
+    # below, so allow it to fail and to log the "did *we* cheat?" line.
+    l1, l2 = node_factory.get_nodes(
+        2,
+        opts=[{'disconnect': ['+WIRE_SHUTDOWN'],
+               'dev-no-reconnect': None,
+               'may_fail': True,
+               'broken_log': r"onchaind-chan#[0-9]*: Could not find resolution"
+                             r" for output .*: did \*we\* cheat\?"},
+              {'dev-no-reconnect': None}])
+    l1.fundwallet(10**7)
+    l1.rpc.connect(l2.info['id'], 'localhost', l2.port)
+
+    # We only send the zero-length script if the feature was negotiated:
+    # otherwise openingd omits the TLV altogether and this proves nothing.
+    their_features = int(only_one(l1.rpc.listpeers()['peers'])['features'], 16)
+    assert their_features & ((1 << OPT_UPFRONT_SHUTDOWN_SCRIPT)
+                             | (1 << (OPT_UPFRONT_SHUTDOWN_SCRIPT + 1)))
+
+    # No close_to, so openingd substitutes the zero-length script.
+    ret = l1.rpc.fundchannel(l2.info['id'], FUNDAMOUNT, push_msat=0,
+                             channel_type=[STATIC_REMOTEKEY])
+    cid = ret['channel_id']
+    assert ret['channel_type']['bits'] == [STATIC_REMOTEKEY]
+    assert ANCHORS_ZERO_FEE_HTLC_TX not in ret['channel_type']['bits']
+
+    # Hang on to commitment 0, before anything moves the channel off it.
+    commitment_0 = l1.rpc.dev_sign_last_tx(l2.info['id'])['tx']
+
+    bitcoind.generate_block(6, wait_for_mempool=1)
+    for node in (l1, l2):
+        wait_for(lambda node=node: only_one(node.rpc.listpeerchannels()['channels'])['state']
+                 == 'CHANNELD_NORMAL')
+
+    # l1 still has a local close_to: with none given, new_channel() falls back
+    # to a p2tr for our final key.  That fallback is only used at close time,
+    # it is not what openingd puts on the wire.
+    chan = only_one(l1.rpc.listpeerchannels()['channels'])
+    assert chan['channel_id'] == cid
+    assert chan['close_to']
+
+    # l2's side: the zero-length script we sent is NULL, not b'' (nor l1's
+    # local fallback, which never left l1).
+    info = only_one(l2.db_query(
+        "SELECT remote_upfront_shutdown_script,"
+        " revocation_basepoint_local,"
+        " delayed_payment_basepoint_remote,"
+        " old_per_commit_remote"
+        " FROM channels;"))
+    assert info['remote_upfront_shutdown_script'] is None
+
+    # Reconstruct the to_local scriptPubKey of l1's commitment 0.  All inputs
+    # come from l2's view: "our" is l2 (the side that would use the revocation
+    # path), "their" is l1 (whose commitment this is).
+    #
+    # l1's first per-commitment point (the one used to build commitment 0)
+    # lives in old_per_commit_remote, not per_commit_remote: channel_ready
+    # explicitly carries the *second* point (channeld's get_per_commitment_point(1)),
+    # so by the time we are NORMAL, per_commit_remote already holds point[1] and
+    # point[0] has shifted into old_per_commit_remote.  No payment has run yet,
+    # so this is still commitment 0's point.
+    our_revocation_basepoint = bytes(info['revocation_basepoint_local'])
+    their_delayed_basepoint = bytes(info['delayed_payment_basepoint_remote'])
+    their_first_point = bytes(info['old_per_commit_remote'])
+    # l1's to_local CSV is the delay l2 imposes on l1, ie. l2's
+    # their_to_self_delay.
+    to_self_delay = chan['their_to_self_delay']
+
+    revocationpubkey = derive_revocation_pubkey(our_revocation_basepoint,
+                                                their_first_point)
+    local_delayedpubkey = derive_simple_pubkey(their_delayed_basepoint,
+                                               their_first_point)
+    wscript = wscript_to_local(to_self_delay, revocationpubkey,
+                               local_delayedpubkey)
+    new_upfront_shutdown_script = p2wsh(wscript)
+
+    # It really is the to_local: it must appear as an output of commitment 0.
+    # (With push_msat=0 the to_remote side is dust, so this is the only output.)
+    decoded = bitcoind.rpc.decoderawtransaction(commitment_0)
+    output_scripts = [vout['scriptPubKey']['hex'] for vout in decoded['vout']]
+    assert new_upfront_shutdown_script.hex() in output_scripts
+
+    # Now move the channel well past commitment 0: l2 invoices until it owns
+    # 80% of the funds.
+    total_msat = int(chan['total_msat'])
+    target_msat = total_msat * 80 // 100
+
+    def l2_msat():
+        return int(only_one(l2.rpc.listpeerchannels()['channels'])['to_us_msat'])
+
+    # Balances lag a payment behind, so track what we sent and wait for it:
+    # reading to_us_msat straight after pay() returns overshoots and then asks
+    # for more than spendable_msat (l1 is the funder, so it keeps back the
+    # reserve plus commitment fee headroom).
+    paid_msat = 0
+    n = 0
+    while paid_msat < target_msat:
+        amount_msat = min(total_msat // 5, target_msat - paid_msat)
+        inv = l2.rpc.invoice(amount_msat, 'drain-{}'.format(n),
+                             'move funds to l2')
+        l1.rpc.pay(inv['bolt11'])
+        paid_msat += amount_msat
+        wait_for(lambda expected=paid_msat: l2_msat() >= expected)
+        n += 1
+
+    # l1 now closes to that commitment-0 to_local script.  l2 has no upfront
+    # script recorded, so channeld does not reject the mismatch and accepts it.
+    # The P2WSH address of our script is where l1's shutdown says to send funds.
+    seg = bitcoind.rpc.decodescript(wscript.hex())['segwit']
+    assert seg['hex'] == new_upfront_shutdown_script.hex()
+    close_addr = scriptpubkey_addr(seg)
+
+    # close() blocks until the channel closes, which never happens here (l1
+    # disconnects after WIRE_SHUTDOWN and won't reconnect), so fire and forget.
+    def do_close():
+        try:
+            l1.rpc.close(l2.info['id'], destination=close_addr)
+        except RpcError:
+            pass
+    threading.Thread(target=do_close, daemon=True).start()
+
+    # l2 receives the shutdown and persists the script.  Don't wait on
+    # CHANNELD_SHUTTING_DOWN: l2 answers with its own WIRE_SHUTDOWN, so if that
+    # gets out before l1's disconnect lands it goes straight on to
+    # CLOSINGD_SIGEXCHANGE, and under valgrind we reliably miss the window.
+    # The stored script is what we are actually here for, and unlike the state
+    # it does not move again.
+    l1.daemon.wait_for_log('dev_disconnect: \\+WIRE_SHUTDOWN')
+
+    def l2_channel_row():
+        return only_one(l2.db_query(
+            "SELECT remote_upfront_shutdown_script, shutdown_scriptpubkey_remote"
+            " FROM channels;"))
+
+    wait_for(lambda: l2_channel_row()['shutdown_scriptpubkey_remote'] is not None)
+
+    # Where did l2 store it?  A shutdown script lands in shutdown_scriptpubkey_
+    # remote; remote_upfront_shutdown_script is the open-time TLV and stays NULL.
+    row = l2_channel_row()
+    assert bytes(row['shutdown_scriptpubkey_remote']) == new_upfront_shutdown_script
+    assert row['remote_upfront_shutdown_script'] is None
+
+    # Finally: l1 publishes the stale commitment 0, where it owned ~100%.  l2
+    # has recorded S (== commitment 0's to_local) as l1's shutdown script, so
+    # every output of the revoked commitment matches a shutdown script we know.
+    # is_mutual_close() used to stop there and call it a mutual close, which
+    # meant handle_their_cheat() was never reached and no penalty was proposed.
+    l1_before = sum(int(o['amount_msat']) for o in l1.rpc.listfunds()['outputs']
+                    if o['status'] == 'confirmed')
+
+    c0_txid = bitcoind.rpc.sendrawtransaction(commitment_0)
+    bitcoind.generate_block(1)
+    sync_blockheight(bitcoind, [l1, l2])
+
+    # No closing negotiation ever happened: l1 disconnected after WIRE_SHUTDOWN
+    # and neither side reconnects, so nothing here can be a real mutual close.
+    assert l1.daemon.is_in_log('peer_out WIRE_CLOSING') is None
+    assert l2.daemon.is_in_log('peer_out WIRE_CLOSING') is None
+
+    # onchaind now classifies by structure first: commitment 0 carries the
+    # obscured commitment number in its locktime and input sequence, so it is a
+    # commitment whatever its outputs pay to.  l2 penalizes it.
+    l2.daemon.wait_for_log('Resolved FUNDING_TRANSACTION/FUNDING_OUTPUT'
+                           ' by THEIR_REVOKED_UNILATERAL .{}'.format(c0_txid))
+    assert not l2.daemon.is_in_log('Resolved FUNDING_TRANSACTION/FUNDING_OUTPUT'
+                                   ' by MUTUAL_CLOSE')
+    l2.wait_for_onchaind_txs(('OUR_PENALTY_TX',
+                              'THEIR_REVOKED_UNILATERAL/DELAYED_CHEAT_OUTPUT_TO_THEM'))
+    bitcoind.generate_block(1)
+    sync_blockheight(bitcoind, [l1, l2])
+    l2.daemon.wait_for_log('Resolved THEIR_REVOKED_UNILATERAL/'
+                           'DELAYED_CHEAT_OUTPUT_TO_THEM by our proposal'
+                           ' OUR_PENALTY_TX')
+
+    # Derive l1's delayed_payment private key for commitment 0 from its
+    # hsm_secret, and verify it against the public keys we already have.  The
+    # modern hsm_secret is a 32-byte header followed by a BIP39 mnemonic; the
+    # root seed hsmd uses is that mnemonic's BIP39 seed (empty passphrase).
+    dbid = only_one(l1.db_query("SELECT id FROM channels;"))['id']
+    with open(os.path.join(l1.daemon.lightning_dir, TEST_NETWORK,
+                           'hsm_secret'), 'rb') as f:
+        hsm_secret = f.read()
+    mnemonic = hsm_secret[32:].decode('ascii')
+    bip32_seed = hashlib.pbkdf2_hmac('sha512', mnemonic.encode('utf-8'),
+                                     b'mnemonic', 2048, dklen=64)
+    delayed_secret = channel_delayed_basepoint_secret(
+        bip32_seed, bytes.fromhex(l2.info['id']), dbid)
+    assert coincurve.PrivateKey(delayed_secret).public_key.format() \
+        == their_delayed_basepoint
+
+    tweak = _sha256(their_first_point, their_delayed_basepoint)
+    delayed_privkey = ((int.from_bytes(delayed_secret, 'big')
+                        + int.from_bytes(tweak, 'big')) % CURVE_ORDER
+                       ).to_bytes(32, 'big')
+    priv = coincurve.PrivateKey(delayed_privkey)
+    assert priv.public_key.format() == local_delayedpubkey
+
+    # Locate the to_local output in commitment 0 and its amount.
+    decoded = bitcoind.rpc.decoderawtransaction(commitment_0)
+    vout = only_one([v for v in decoded['vout']
+                     if v['scriptPubKey']['hex'] == new_upfront_shutdown_script.hex()])
+    in_value = int(round(vout['value'] * 10**8))
+    outpoint = bytes.fromhex(c0_txid)[::-1] + vout['n'].to_bytes(4, 'little')
+
+    # An address we (l1) control, and its scriptPubKey for the sweep output.
+    sweep_addr = l1.rpc.newaddr('bech32')['bech32']
+    out_spk = bytes.fromhex(bitcoind.rpc.validateaddress(sweep_addr)['scriptPubKey'])
+    out_value = in_value - 1000  # generous fee for a ~1-input, 1-output tx
+
+    # BIP143 sighash over the to_local delay path.  nSequence must carry the
+    # CSV delay, and the tx version must be >= 2 for BIP68 to apply.
+    seq = to_self_delay.to_bytes(4, 'little')
+    outputs = (out_value.to_bytes(8, 'little') + _ser_bytes(out_spk))
+    preimage = (b'\x02\x00\x00\x00'
+                + _dsha256(outpoint)
+                + _dsha256(seq)
+                + outpoint
+                + _ser_bytes(wscript)
+                + in_value.to_bytes(8, 'little')
+                + seq
+                + _dsha256(outputs)
+                + b'\x00\x00\x00\x00'
+                + b'\x01\x00\x00\x00')
+    sig = priv.sign(_dsha256(preimage), hasher=None) + b'\x01'
+
+    # to_local delay path: OP_IF pops the top item, so an empty (false) top
+    # selects OP_ELSE; the signature below it satisfies the final OP_CHECKSIG.
+    witness = _ser_varint(3) + _ser_bytes(sig) + _ser_bytes(b'') + _ser_bytes(wscript)
+    sweep_tx = (b'\x02\x00\x00\x00'          # version 2
+                + b'\x00\x01'                # segwit marker + flag
+                + _ser_varint(1) + outpoint + _ser_bytes(b'') + seq
+                + _ser_varint(1) + outputs
+                + witness
+                + b'\x00\x00\x00\x00')       # locktime
+
+    # This is the transaction that used to steal the funds.  The to_local CSV
+    # needs to_self_delay confirmations before it is valid at all, and by then
+    # the penalty - which has no such delay - has already spent the output, so
+    # bitcoind rejects it as spending something that no longer exists.
+    bitcoind.generate_block(to_self_delay)
+    sync_blockheight(bitcoind, [l1, l2])
+    with pytest.raises(JSONRPCError, match='missingorspent'):
+        bitcoind.rpc.sendrawtransaction(sweep_tx.hex())
+
+    # l2 swept the cheat output instead, and l1 gained nothing.
+    wait_for(lambda: l2.rpc.listfunds()['outputs'] != [])
+    l1_after = sum(int(o['amount_msat']) for o in l1.rpc.listfunds()['outputs']
+                   if o['status'] == 'confirmed')
+    assert l1_after == l1_before
+    assert not any(o['address'] == sweep_addr
+                   for o in l1.rpc.listfunds()['outputs'])

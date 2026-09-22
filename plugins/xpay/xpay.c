@@ -22,6 +22,7 @@
 #include <common/pseudorand.h>
 #include <common/randbytes.h>
 #include <common/route.h>
+#include <common/sphinx.h>
 #include <common/trace.h>
 #include <common/wireaddr.h>
 #include <errno.h>
@@ -1481,6 +1482,63 @@ static const u8 *create_onion(const tal_t *ctx,
 	return ret;
 }
 
+
+/* create_onion failed: the reserved route cannot be encoded. Unreserve
+ * it, bias the first hop so askrene does not hand the same route back,
+ * and route again. If every attempt fails this way, give up with the
+ * same error we used to return immediately.
+ *
+ * getroutes is asked for a hop budget, but a payload can still
+ * exceed the per-hop estimate (a large amount, or extra TLVs). A blinded
+ * path is appended after the public route, so this remains the backstop
+ * when create_onionpacket() returns NULL. */
+static struct command_result *payment_path_too_long(struct command *aux_cmd,
+						    struct attempt *attempt)
+{
+	struct payment *payment = attempt->payment;
+	struct amount_msat amount = attempt->amount;
+
+	payment->num_failures++;
+	list_del_from(&payment->current_attempts, &attempt->list);
+	list_add(&payment->past_attempts, &attempt->list);
+
+	attempt_info(attempt,
+		     "onion does not fit (%zu hops): retrying a shorter route",
+		     tal_count(attempt->hops));
+
+	unreserve_path(aux_cmd, attempt);
+
+	/* Not the introduction: that is the only entry to the invoice path. */
+	if (tal_count(attempt->hops) > 0) {
+		struct out_req *req;
+
+		req = payment_ignored_req(aux_cmd, attempt, "askrene-bias-channel");
+		json_add_string(req->js, "layer", payment->private_layer);
+		json_add_short_channel_id_dir(req->js, "short_channel_id_dir",
+					      attempt->hops[0].scidd);
+		json_add_s32(req->js, "bias", -100);
+		json_add_string(req->js, "description",
+				"negative bias: onion path too long");
+		json_add_bool(req->js, "relative", true);
+		send_payment_req(aux_cmd, payment, req);
+	}
+
+	if (!payment->cmd)
+		return command_still_pending(aux_cmd);
+
+	/* A payment whose every route is too long would otherwise spin
+	 * until the deadline. Bound the retries, then fail as before. */
+	if (payment->num_failures > 8) {
+		payment_give_up(aux_cmd, payment, PAY_UNSPECIFIED_ERROR,
+				"Could not create payment onion: path too long!");
+		return command_still_pending(aux_cmd);
+	}
+
+	if (amount_msat_is_zero(payment->amount_being_routed))
+		return getroutes_for(aux_cmd, payment, amount);
+	return command_still_pending(aux_cmd);
+}
+
 static struct command_result *do_inject(struct command *aux_cmd,
 					struct attempt *attempt)
 {
@@ -1491,12 +1549,8 @@ static struct command_result *do_inject(struct command *aux_cmd,
 	u32 effective_bheight = xpay->blockheight + 1;
 
 	onion = create_onion(tmpctx, attempt, effective_bheight);
-	/* FIXME: Handle this better! */
-	if (!onion) {
-		payment_give_up(aux_cmd, attempt->payment, PAY_UNSPECIFIED_ERROR,
-				"Could not create payment onion: path too long!");
-		return command_still_pending(aux_cmd);
-	}
+	if (!onion)
+		return payment_path_too_long(aux_cmd, attempt);
 
 	outgoing_notify_start(attempt);
 	attempt->start_time = time_mono();
@@ -1849,6 +1903,60 @@ static struct command_result *waitblockheight_failed(struct command *aux_cmd,
 	return command_still_pending(aux_cmd);
 }
 
+/* onion_blinded_hop() already length-prefixes; add the HMAC. */
+static size_t blinded_hop_onion_size(const struct amount_msat *deliver,
+				     const struct amount_msat *total,
+				     const u32 *cltv,
+				     const u8 *enctlv,
+				     const struct pubkey *blinding)
+{
+	const u8 *payload = onion_blinded_hop(tmpctx, deliver, total, cltv,
+					      enctlv, blinding);
+	return tal_bytelen(payload) + HMAC_SIZE;
+}
+
+/* Hops getroutes may return before the onion exceeds ROUTING_INFO_SIZE.
+ * Blinded hops are appended afterwards and are not in the graph.
+ * 0 means the tail alone does not fit. */
+static u32 payment_max_public_hops(const struct payment *payment)
+{
+	/* short_channel_id + amt_to_forward + outgoing_cltv_value, plus HMAC. */
+	const size_t public_hop = 65;
+	size_t tail, room;
+
+	if (!payment->paths) {
+		tail = public_hop;
+	} else {
+		const struct amount_msat deliver = payment->amount;
+		const u32 cltv = 0;
+		size_t worst = 0;
+
+		for (size_t i = 0; i < tal_count(payment->paths); i++) {
+			const struct blinded_path *path = payment->paths[i];
+			size_t bytes = 0;
+
+			for (size_t h = 0; h < tal_count(path->path); h++) {
+				bool first = (h == 0);
+				bool final = (h == tal_count(path->path) - 1);
+				bytes += blinded_hop_onion_size(
+					final ? &deliver : NULL,
+					final ? &deliver : NULL,
+					final ? &cltv : NULL,
+					path->path[h]->encrypted_recipient_data,
+					first ? &path->first_path_key : NULL);
+			}
+			if (bytes > worst)
+				worst = bytes;
+		}
+		tail = worst;
+	}
+
+	if (tail >= ROUTING_INFO_SIZE)
+		return 0;
+	room = ROUTING_INFO_SIZE - tail;
+	return room / public_hop;
+}
+
 static struct command_result *getroutes_for(struct command *aux_cmd,
 					    struct payment *payment,
 					    struct amount_msat deliver)
@@ -1949,6 +2057,7 @@ static struct command_result *getroutes_for(struct command *aux_cmd,
 	json_add_amount_msat(req->js, "maxfee_msat", maxfee);
 	json_add_u32(req->js, "final_cltv", payment->final_cltv);
 	json_add_u32(req->js, "maxdelay", payment->maxdelay);
+	json_add_u32(req->js, "maxhops", payment_max_public_hops(payment));
 	if (payment->maxparts) {
 		size_t count_pending = count_current_attempts(payment);
 		assert(payment->maxparts > count_pending);
@@ -2206,9 +2315,11 @@ preapprove_succeed(struct command *cmd, const char *method, const char *buf,
 	return age_layer(cmd, payment);
 }
 
+/* If it returns NULL, *authorized is the most we agreed to pay. */
 static struct command_result *check_offer_payable(struct command *cmd,
 						  const char *offerstr,
-						  const struct amount_msat *msat)
+						  const struct amount_msat *msat,
+						  struct amount_msat *authorized)
 {
 	const char *err;
 	struct tlv_offer *b12offer = offer_decode(tmpctx,
@@ -2219,6 +2330,17 @@ static struct command_result *check_offer_payable(struct command *cmd,
 	if (!b12offer)
 		return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
 				    "Invalid bolt12 offer: %s", err);
+	/* BOLT #12:
+	 *     - if `offer_amount` is not present:
+	 *       - MUST specify `invreq_amount`.
+	 *     - otherwise:
+	 *       - MAY omit `invreq_amount`.
+	 *       - if it sets `invreq_amount`:
+	 *         - MUST specify `invreq_amount`.`msat` as greater or equal to amount expected by `offer_amount` (and, if present, `offer_currency` and `invreq_quantity`).
+	 */
+	/* We can't work out the expected amount without a conversion rate, so we
+	 * refuse currency offers here.  We also require the exact offer amount,
+	 * which is stricter than the "greater or equal" the spec allows. */
 	/* We will only one-shot if we know amount!  (FIXME: Convert!) */
 	if (b12offer->offer_currency)
 		return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
@@ -2240,6 +2362,11 @@ static struct command_result *check_offer_payable(struct command *cmd,
 	if (offer_recurrence(b12offer))
 		return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
 				    "Cannot xpay recurring offers");
+
+	if (msat)
+		*authorized = *msat;
+	else
+		*authorized = amount_msat(*b12offer->offer_amount);
 
 	return NULL;
 }
@@ -2275,6 +2402,10 @@ check_offer_sendamount_payable(struct command *cmd, const char *offerstr)
 
 struct xpay_params {
 	struct amount_msat *msat, *maxfee, *partial, *includefees_msat;
+	/* What we agreed to pay, if we're paying an offer: the amount we sent
+	 * as invreq_amount, or the offer amount if we sent none.  NULL for
+	 * sendamount, where xpay_core demands the invoice match *msat. */
+	struct amount_msat *authorized_msat;
 	const char **layers;
 	unsigned int retryfor;
 	u32 maxdelay;
@@ -2290,11 +2421,51 @@ invoice_fetched(struct command *cmd,
 		const jsmntok_t *result,
 		struct xpay_params *params)
 {
-	const char *inv;
+	const char *inv, *err;
 
 	inv = json_strdup(tmpctx, buf, json_get_member(buf, result, "invoice"));
-	inv = to_canonical_invstr(NULL, inv);
-	return xpay_core(cmd, take(inv),
+	inv = to_canonical_invstr(tmpctx, inv);
+
+	/* BOLT #12:
+	 *   - if `invreq_amount` is present:
+	 *     - MUST reject the invoice if `invoice_amount` is not equal to `invreq_amount`
+	 *   - otherwise:
+	 *     - SHOULD confirm authorization if `invoice_amount`.`msat` is not within
+	 *       the amount range authorized.
+	 */
+	/* invoice_amount is not one of the fields the invoice must copy from our
+	 * invoice_request, so it is set independently of what we asked for and
+	 * has to be checked here.  We set invreq_amount iff we were given an
+	 * amount, which selects which of the two rules above applies. */
+	if (params->authorized_msat) {
+		struct amount_msat invoice_msat;
+		struct tlv_invoice *b12inv
+			= invoice_decode(tmpctx, inv, strlen(inv),
+					 plugin_feature_set(cmd->plugin),
+					 chainparams, &err);
+		if (!b12inv)
+			return command_fail(cmd, OFFER_BAD_INVREQ_REPLY,
+					    "Invalid bolt12 invoice: %s", err);
+		/* invoice_decode() has already insisted on invoice_amount. */
+		invoice_msat = amount_msat(*b12inv->invoice_amount);
+		if (params->msat) {
+			if (!amount_msat_eq(invoice_msat, *params->authorized_msat))
+				return command_fail(cmd, OFFER_BAD_INVREQ_REPLY,
+						    "Invoice amount is %s, but we asked for %s",
+						    fmt_amount_msat(tmpctx, invoice_msat),
+						    fmt_amount_msat(tmpctx,
+								    *params->authorized_msat));
+		} else if (amount_msat_greater(invoice_msat,
+					       *params->authorized_msat)) {
+			return command_fail(cmd, OFFER_BAD_INVREQ_REPLY,
+					    "Invoice amount is %s, more than the %s we authorized",
+					    fmt_amount_msat(tmpctx, invoice_msat),
+					    fmt_amount_msat(tmpctx,
+							    *params->authorized_msat));
+		}
+	}
+
+	return xpay_core(cmd, inv,
 			 NULL, params->maxfee, params->layers,
 			 params->retryfor, params->partial, params->maxdelay,
 			 params->label, NULL, false, false,
@@ -2349,8 +2520,15 @@ bip353_fetched(struct command *cmd,
 
 	if (xparams->includefees_msat)
 		ret = check_offer_sendamount_payable(cmd, offerstr);
-	else
-		ret = check_offer_payable(cmd, offerstr, xparams->msat);
+	else {
+		struct amount_msat authorized;
+		ret = check_offer_payable(cmd, offerstr, xparams->msat,
+					  &authorized);
+		if (!ret)
+			xparams->authorized_msat
+				= tal_dup(xparams, struct amount_msat,
+					  &authorized);
+	}
 
 	if (ret)
 		return ret;
@@ -2393,8 +2571,9 @@ static struct command_result *json_xpay_params(struct command *cmd,
 	/* Is this a one-shot vibe payment?  Kids these days! */
 	if (!as_pay && bolt12_has_offer_prefix(invstring)) {
 		struct command_result *ret;
+		struct amount_msat authorized;
 
-		ret = check_offer_payable(cmd, invstring, msat);
+		ret = check_offer_payable(cmd, invstring, msat, &authorized);
 		if (ret)
 			return ret;
 
@@ -2420,6 +2599,8 @@ static struct command_result *json_xpay_params(struct command *cmd,
                 xparams->payer_note = payer_note;
 		xparams->label = label;
                 xparams->includefees_msat = NULL;
+		xparams->authorized_msat = tal_dup(xparams, struct amount_msat,
+						   &authorized);
 
 		return do_fetchinvoice(cmd, invstring, xparams);
 	}
@@ -2448,6 +2629,8 @@ static struct command_result *json_xpay_params(struct command *cmd,
                 xparams->payer_note = payer_note;
 		xparams->label = label;
                 xparams->includefees_msat = NULL;
+		/* Set once bip353_fetched() knows the offer. */
+		xparams->authorized_msat = NULL;
 
 		req = jsonrpc_request_start(cmd, "fetchbip353",
 					    bip353_fetched,
@@ -2645,6 +2828,13 @@ static struct command_result *xpay_core(struct command *cmd,
  		if (amount_msat_is_zero(amount_msat(*b12inv->invoice_amount)))
 			return command_fail(cmd, JSONRPC2_INVALID_PARAMS,
 					    "Invalid bolt12 invoice with zero amount");
+		/* BOLT #12:
+		 *   - if `invoice_relative_expiry` is present:
+		 *     - MUST reject the invoice if the current time since 1970-01-01 UTC is greater than `invoice_created_at` plus `seconds_from_creation`.
+		 *   - otherwise:
+		 *     - MUST reject the invoice if the current time since 1970-01-01 UTC is greater than `invoice_created_at` plus 7200.
+		 */
+		/* invoice_expiry() applies the 7200 second default for us. */
 		invexpiry = invoice_expiry(b12inv);
 		invoice_msat = amount_msat(*b12inv->invoice_amount);
 
@@ -2937,6 +3127,8 @@ static struct command_result *json_sendamount(struct command *cmd,
 		xparams->bip353 = NULL;
 		xparams->payer_note = payer_note;
 		xparams->label = label;
+		/* xpay_core() insists the invoice match *msat exactly here. */
+		xparams->authorized_msat = NULL;
 
 		return do_fetchinvoice(cmd, invstring, xparams);
 	}
@@ -2955,6 +3147,8 @@ static struct command_result *json_sendamount(struct command *cmd,
 		xparams->bip353 = invstring;
 		xparams->payer_note = payer_note;
 		xparams->label = label;
+		/* xpay_core() insists the invoice match *msat exactly here. */
+		xparams->authorized_msat = NULL;
 
 		req = jsonrpc_request_start(cmd, "fetchbip353", bip353_fetched,
 					    forward_error, xparams);
