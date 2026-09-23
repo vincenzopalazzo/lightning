@@ -1068,6 +1068,7 @@ static bool json_add_invreq_fields(struct command *cmd,
 				   struct bip_353_name *bip353,
 				   const u32 *invreq_recurrence_counter,
 				   const u32 *invreq_recurrence_start,
+				   const u8 *invreq_recurrence_prev_state,
 				   const struct tlv_invoice_request_invreq_recurrence_cancel *invreq_recurrence_cancel)
 {
 	bool valid = true;
@@ -1139,6 +1140,9 @@ static bool json_add_invreq_fields(struct command *cmd,
 			json_add_u32(js, "invreq_recurrence_start",
 				     *invreq_recurrence_start);
 	}
+	if (invreq_recurrence_prev_state)
+		json_add_hex_talarr(js, "invreq_recurrence_prev_state",
+				    invreq_recurrence_prev_state);
 
 	if (invreq_recurrence_cancel) {
 		json_add_bool(js, "invreq_recurrence_cancel", true);
@@ -1277,6 +1281,7 @@ static void json_add_invoice_request(struct command *cmd,
 					invreq->invreq_bip_353_name,
 					invreq->invreq_recurrence_counter,
 					invreq->invreq_recurrence_start,
+					invreq->invreq_recurrence_prev_state,
 					invreq->invreq_recurrence_cancel);
 
 	/* BOLT #12:
@@ -1328,7 +1333,8 @@ static bool json_add_invoice_fields(struct command *cmd,
 				    const u8 *invoice_features,
 				    const struct pubkey *invoice_node_id,
 				    const struct bitcoin_blkid *invreq_chain,
-				    const u64 *invoice_recurrence_basetime)
+				    const u64 *invoice_recurrence_basetime,
+				    const u8 *invoice_recurrence_next_state)
 {
 	bool valid = true;
 
@@ -1364,6 +1370,9 @@ static bool json_add_invoice_fields(struct command *cmd,
 	if (invoice_recurrence_basetime)
 		json_add_u64(js, "invoice_recurrence_basetime",
 			     *invoice_recurrence_basetime);
+	if (invoice_recurrence_next_state)
+		json_add_hex_talarr(js, "invoice_recurrence_next_state",
+				    invoice_recurrence_next_state);
 
 	return valid;
 }
@@ -1411,6 +1420,7 @@ static void json_add_b12_invoice(struct command *cmd,
 					invoice->invreq_bip_353_name,
 					invoice->invreq_recurrence_counter,
 					invoice->invreq_recurrence_start,
+					invoice->invreq_recurrence_prev_state,
 					NULL);
 
 	/* BOLT #12:
@@ -1494,6 +1504,9 @@ static void json_add_b12_invoice(struct command *cmd,
 					 invoice->invreq_chain,
 					 invoice_recurrence(invoice)
 					 ? invoice->invoice_recurrence_basetime
+					 : NULL,
+					 invoice_recurrence(invoice)
+					 ? invoice->invoice_recurrence_next_state
 					 : NULL);
 
 	/* invoice_decode checked this */
@@ -1582,6 +1595,7 @@ static void json_add_payer_proof(struct json_stream *js,
 				proof->invoice_features,
 				proof->invoice_node_id,
 				proof->invreq_chain,
+				NULL,
 				NULL);
 
 	/* Required proof fields */

@@ -989,6 +989,9 @@ int main(int argc, char *argv[])
 		} else {
 			must_not_have(invreq, invreq_recurrence_start);
 		}
+		if (invreq->invreq_recurrence_prev_state)
+			print_hex("invreq_recurrence_prev_state",
+					       invreq->invreq_recurrence_prev_state);
 		if (invreq->invreq_recurrence_cancel)
 			printf("invreq_recurrence_cancel\n");
 		if (invreq->invreq_paths)
@@ -1083,6 +1086,9 @@ int main(int argc, char *argv[])
 		} else {
 			must_not_have(invoice, invreq_recurrence_start);
 		}
+		if (invoice->invoice_recurrence_next_state)
+			print_hex("invoice_recurrence_next_state",
+					       invoice->invoice_recurrence_next_state);
 		if (invoice->invreq_paths)
 			print_blindedpaths("invreq_paths", invoice->invreq_paths, NULL);
 		if (must_have(invoice, invoice_paths))

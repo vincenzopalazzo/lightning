@@ -94,6 +94,8 @@ tlvdata,invoice_request,invreq_recurrence_counter,counter,tu32,
 tlvtype,invoice_request,invreq_recurrence_start,2000000093
 tlvdata,invoice_request,invreq_recurrence_start,period_offset,tu32,
 tlvtype,invoice_request,invreq_recurrence_cancel,2000000094
+tlvtype,invoice_request,invreq_recurrence_prev_state,2000000096
+tlvdata,invoice_request,invreq_recurrence_prev_state,state,byte,...
 tlvtype,invoice_request,signature,240
 tlvdata,invoice_request,signature,sig,bip340sig,
 subtype,bip_353_name
@@ -175,6 +177,8 @@ tlvtype,invoice,invoice_node_id,176
 tlvdata,invoice,invoice_node_id,node_id,point,
 tlvtype,invoice,invoice_recurrence_basetime,3000000177
 tlvdata,invoice,invoice_recurrence_basetime,basetime,tu64,
+tlvtype,invoice,invoice_recurrence_next_state,3000000178
+tlvdata,invoice,invoice_recurrence_next_state,state,byte,...
 tlvtype,invoice,signature,240
 tlvdata,invoice,signature,sig,bip340sig,
 subtype,blinded_payinfo

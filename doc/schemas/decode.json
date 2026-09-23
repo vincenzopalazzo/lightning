@@ -891,6 +891,13 @@
                 "Present to cancel a recurring invoice"
               ]
             },
+            "invreq_recurrence_prev_state": {
+              "type": "hex",
+              "added": "v26.09",
+              "description": [
+                "Opaque state the previous invoice asked us to echo."
+              ]
+            },
             "signature": {
               "type": "bip340sig",
               "description": [
@@ -986,6 +993,7 @@
             "invreq_bip_353_name": {},
             "invreq_recurrence_counter": {},
             "invreq_recurrence_start": {},
+            "invreq_recurrence_prev_state": {},
             "invreq_recurrence_cancel": {},
             "warning_invalid_offer_description": {
               "type": "string",
@@ -1716,6 +1724,13 @@
                 "The UNIX timestamp to base the invoice periods on."
               ]
             },
+            "invoice_recurrence_next_state": {
+              "type": "hex",
+              "added": "v26.09",
+              "description": [
+                "Opaque state the next invoice request must echo."
+              ]
+            },
             "signature": {
               "type": "bip340sig",
               "description": [
@@ -1812,6 +1827,7 @@
             "invreq_bip_353_name": {},
             "invreq_recurrence_counter": {},
             "invreq_recurrence_start": {},
+            "invreq_recurrence_prev_state": {},
             "warning_invalid_offer_description": {
               "type": "string",
               "description": [
