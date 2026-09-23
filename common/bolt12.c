@@ -475,6 +475,11 @@ static u64 time_change(u64 prevstart, u32 number,
 u64 offer_period_start(u64 basetime, size_t n,
 		       const struct recurrence *recur)
 {
+	/* FIXME: BOLT-recurrence #12 says if period #0 starts on a leap
+	 * second, the period base is one second earlier.  bolts#1240 cites
+	 * bolt12/offer-period-test.json, which is not in that PR, so we do
+	 * not invent leap-second handling without vectors.
+	 */
 	/* BOLT-recurrence #12:
 	 * 1. A `time_unit` defining 0 (seconds), 1 (days), 2 (months).
 	 */

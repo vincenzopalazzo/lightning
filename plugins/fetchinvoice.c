@@ -17,6 +17,7 @@
 #include <common/overflows.h>
 #include <common/randbytes.h>
 #include <inttypes.h>
+#include <stdlib.h>
 #include <plugins/establish_onion_path.h>
 #include <plugins/fetchinvoice.h>
 #include <plugins/offers.h>
@@ -57,6 +58,8 @@ struct sent {
 	u32 wait_timeout;
 	/* Recurrence series key, so we can remember next_state. */
 	struct json_escape *rec_label;
+	/* Basetime of the previous invoice in this series, if we have one. */
+	u64 *series_basetime;
 };
 
 static struct sent *find_sent_by_secret(const struct secret *pathsecret)
@@ -169,6 +172,21 @@ static const char **recurrence_state_key(const tal_t *ctx,
 			      rec_label->s, "next_state");
 }
 
+/* First-request period_offset, reused on every later request. */
+static const char **recurrence_offset_key(const tal_t *ctx,
+					  const struct json_escape *rec_label)
+{
+	return mkdatastorekey(ctx, "offers", "recurrence",
+			      rec_label->s, "period_offset");
+}
+
+static const char **recurrence_basetime_key(const tal_t *ctx,
+					    const struct json_escape *rec_label)
+{
+	return mkdatastorekey(ctx, "offers", "recurrence",
+			      rec_label->s, "basetime");
+}
+
 struct fetched_inv {
 	struct sent *sent;
 	struct tlv_invoice *inv;
@@ -220,6 +238,72 @@ static struct command_result *del_recurrence_state_err(struct command *cmd,
  */
 static struct command_result *save_recurrence_next_state(struct command *cmd,
 							 struct sent *sent,
+							 struct tlv_invoice *inv);
+
+static struct command_result *save_series_basetime(struct command *cmd,
+						   struct fetched_inv *fi);
+
+static struct command_result *saved_period_offset(struct command *cmd,
+						  const char *method UNUSED,
+						  const char *buf UNUSED,
+						  const jsmntok_t *result UNUSED,
+						  struct fetched_inv *fi)
+{
+	return save_series_basetime(cmd, fi);
+}
+
+static struct command_result *saved_basetime(struct command *cmd,
+					     const char *method UNUSED,
+					     const char *buf UNUSED,
+					     const jsmntok_t *result UNUSED,
+					     struct fetched_inv *fi)
+{
+	return save_recurrence_next_state(cmd, fi->sent, fi->inv);
+}
+
+static struct command_result *save_series_basetime(struct command *cmd,
+						   struct fetched_inv *fi)
+{
+	char *basetime;
+
+	basetime = tal_fmt(tmpctx, "%"PRIu64,
+			   *fi->inv->invoice_recurrence_basetime);
+	return jsonrpc_set_datastore_string(cmd,
+		recurrence_basetime_key(tmpctx, fi->sent->rec_label),
+		basetime, "create-or-replace",
+		saved_basetime, forward_error, fi);
+}
+
+/* Remember period_offset from the first invoice so later invreqs reuse it.
+ * Always remember basetime so the next invoice can be checked against it. */
+static struct command_result *save_recurrence_series(struct command *cmd,
+						     struct sent *sent,
+						     struct tlv_invoice *inv)
+{
+	struct fetched_inv *fi = tal(cmd, struct fetched_inv);
+
+	fi->sent = sent;
+	fi->inv = inv;
+
+	if (inv->offer_recurrence_base
+	    && inv->invreq_recurrence_counter
+	    && *inv->invreq_recurrence_counter == 0) {
+		char *offset;
+		u32 period_offset = 0;
+
+		if (inv->invreq_recurrence_start)
+			period_offset = *inv->invreq_recurrence_start;
+		offset = tal_fmt(tmpctx, "%u", period_offset);
+		return jsonrpc_set_datastore_string(cmd,
+			recurrence_offset_key(tmpctx, sent->rec_label),
+			offset, "create-or-replace",
+			saved_period_offset, forward_error, fi);
+	}
+	return save_series_basetime(cmd, fi);
+}
+
+static struct command_result *save_recurrence_next_state(struct command *cmd,
+							 struct sent *sent,
 							 struct tlv_invoice *inv)
 {
 	struct fetched_inv *fi = tal(cmd, struct fetched_inv);
@@ -247,6 +331,24 @@ static struct command_result *save_recurrence_next_state(struct command *cmd,
 		json_add_keypath(req->js->jout, "key", keys);
 		return send_outreq(req);
 	}
+}
+
+static bool basetime_ok(const struct sent *sent, const struct tlv_invoice *inv)
+{
+	u32 counter = *inv->invreq_recurrence_counter;
+
+	if (counter == 0) {
+		if (inv->offer_recurrence_base)
+			return *inv->invoice_recurrence_basetime
+				== inv->offer_recurrence_base->basetime;
+		return *inv->invoice_recurrence_basetime
+			== *inv->invoice_created_at;
+	}
+
+	/* No previous basetime saved: we cannot check, so do not reject. */
+	if (!sent->series_basetime)
+		return true;
+	return *inv->invoice_recurrence_basetime == *sent->series_basetime;
 }
 
 static struct command_result *handle_invreq_response(struct command *cmd,
@@ -366,6 +468,23 @@ static struct command_result *handle_invreq_response(struct command *cmd,
 	}
 
 	/* BOLT-recurrence #12:
+	 * - if `invreq_recurrence_counter` is 0:
+	 *   - if `offer_recurrence_base` is present:
+	 *     - MUST reject the invoice if `invoice_recurrence_basetime`
+	 *       is not equal to `offer_recurrence_base`.`basetime`
+	 *   - otherwise:
+	 *     - MUST reject the invoice if `invoice_recurrence_basetime`
+	 *       is not equal to `invoice_created_at`.
+	 * - otherwise (successive invoices):
+	 *   - SHOULD reject the invoice if `invoice_recurrence_basetime`
+	 *     is not equal to that of the previous period's invoice.
+	 */
+	if (recurrence && !basetime_ok(sent, inv)) {
+		badfield = "invoice_recurrence_basetime";
+		goto badinv;
+	}
+
+	/* BOLT-recurrence #12:
 	 * - if `invoice_recurrence_next_state` is present:
 	 *   - MUST save the contents for the next `invreq_recurrence_prev_state`.
 	 *
@@ -374,7 +493,7 @@ static struct command_result *handle_invreq_response(struct command *cmd,
 	 * clear any previously saved blob so the next invreq omits it too.
 	 */
 	if (recurrence && sent->rec_label)
-		return save_recurrence_next_state(cmd, sent, inv);
+		return save_recurrence_series(cmd, sent, inv);
 
 	return finish_fetched_invoice(cmd, sent, inv);
 
@@ -993,7 +1112,73 @@ static struct command_result *got_recurrence_prev_state(struct command *cmd,
 	return finish_invreq(cmd, b);
 }
 
-/* Counter 0 must not carry prev_state.  Later periods echo the saved blob. */
+static struct command_result *load_prev_state(struct command *cmd,
+					      struct invreq_build *b);
+
+static struct command_result *got_series_basetime(struct command *cmd,
+						  const char *val,
+						  struct invreq_build *b)
+{
+	if (val) {
+		char *end;
+		u64 basetime;
+
+		basetime = strtoull(val, &end, 10);
+		if (*end != '\0')
+			return command_fail(cmd, LIGHTNINGD,
+					    "Bad saved basetime %s", val);
+		b->sent->series_basetime = tal_dup(b->sent, u64, &basetime);
+	}
+	return load_prev_state(cmd, b);
+}
+
+static struct command_result *load_series_basetime(struct command *cmd,
+						   struct invreq_build *b)
+{
+	return jsonrpc_get_datastore_string(cmd,
+		recurrence_basetime_key(tmpctx, b->rec_label),
+		got_series_basetime, b);
+}
+
+static struct command_result *load_prev_state(struct command *cmd,
+					      struct invreq_build *b)
+{
+	return jsonrpc_get_datastore_binary(cmd,
+		recurrence_state_key(tmpctx, b->rec_label),
+		got_recurrence_prev_state, b);
+}
+
+/* BOLT-recurrence #12:
+ * - MUST set `period_offset` to the same value on all following requests.
+ *
+ * A missing saved offset is the first request's 0.  Do not default a later
+ * call to 0 if we remembered something else.
+ */
+static struct command_result *load_series_basetime(struct command *cmd,
+						   struct invreq_build *b);
+
+static struct command_result *got_period_offset(struct command *cmd,
+						const char *val,
+						struct invreq_build *b)
+{
+	u32 offset = 0;
+
+	if (val) {
+		char *end;
+
+		offset = strtoul(val, &end, 10);
+		if (*end != '\0')
+			return command_fail(cmd, LIGHTNINGD,
+					    "Bad saved period_offset %s", val);
+	}
+	if (!b->invreq->invreq_recurrence_start)
+		b->invreq->invreq_recurrence_start = tal(b->invreq, u32);
+	*b->invreq->invreq_recurrence_start = offset;
+	return load_series_basetime(cmd, b);
+}
+
+/* Counter 0 must not carry prev_state.  Later periods echo the saved blob
+ * and, if this series has a base, the first period_offset. */
 static struct command_result *maybe_add_prev_state(struct command *cmd,
 						   struct invreq_build *b)
 {
@@ -1002,9 +1187,11 @@ static struct command_result *maybe_add_prev_state(struct command *cmd,
 	    || *b->invreq->invreq_recurrence_counter == 0)
 		return finish_invreq(cmd, b);
 
-	return jsonrpc_get_datastore_binary(cmd,
-		recurrence_state_key(tmpctx, b->rec_label),
-		got_recurrence_prev_state, b);
+	if (b->invreq->offer_recurrence_base)
+		return jsonrpc_get_datastore_string(cmd,
+			recurrence_offset_key(tmpctx, b->rec_label),
+			got_period_offset, b);
+	return load_series_basetime(cmd, b);
 }
 
 /* Fetches an invoice for this offer, and makes sure it corresponds. */
@@ -1020,6 +1207,7 @@ struct command_result *json_fetchinvoice(struct command *cmd,
 	struct tlv_invoice_request *invreq;
 	struct sent *sent = tal(cmd, struct sent);
 	sent->rec_label = NULL;
+	sent->series_basetime = NULL;
 	struct bip_353_name *bip353;
 	u32 *timeout;
 	u64 *quantity;
@@ -1292,6 +1480,7 @@ struct command_result *json_cancelrecurringinvoice(struct command *cmd,
 	struct tlv_invoice_request *invreq;
 	struct sent *sent = tal(cmd, struct sent);
 	sent->rec_label = NULL;
+	sent->series_basetime = NULL;
 	struct bip_353_name *bip353;
 	u32 *recurrence_counter, *recurrence_start;
 
@@ -1620,6 +1809,7 @@ struct command_result *json_sendinvoice(struct command *cmd,
 	u32 *timeout;
 	struct sent *sent = tal(cmd, struct sent);
 	sent->rec_label = NULL;
+	sent->series_basetime = NULL;
 
 	sent->offer = NULL;
 	sent->cmd = cmd;
@@ -1740,6 +1930,7 @@ struct command_result *json_dev_rawrequest(struct command *cmd,
 {
 	struct sent *sent = tal(cmd, struct sent);
 	sent->rec_label = NULL;
+	sent->series_basetime = NULL;
 	u32 *timeout;
 	struct pubkey *node_id;
 	struct tlv_onionmsg_tlv *payload;

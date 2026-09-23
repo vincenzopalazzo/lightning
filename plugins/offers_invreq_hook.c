@@ -604,6 +604,10 @@ static bool recurrence_state_matches(const u8 *prev, const u8 *next)
 	return memeq(prev, tal_bytelen(prev), next, tal_bytelen(next));
 }
 
+static struct command_result *check_period_offset(struct command *cmd,
+						  struct invreq *ir,
+						  const struct tlv_invoice *first);
+
 static struct command_result *prev_invoice_done(struct command *cmd,
 						const char *method,
 						const char *buf,
@@ -670,10 +674,46 @@ static struct command_result *prev_invoice_done(struct command *cmd,
 				   "recurrence_prev_state mismatch");
 	}
 
+	/* Counter 1's previous invoice is counter 0, so the offset is here. */
+	if (*ir->invreq->invreq_recurrence_counter == 1) {
+		struct command_result *err;
+
+		err = check_period_offset(cmd, ir, previnv);
+		if (err)
+			return err;
+	}
+
 	return check_period(cmd, ir, *previnv->invoice_recurrence_basetime);
 }
 
+/* period_offset is chosen on counter 0 and must not change later. */
+static struct command_result *check_period_offset(struct command *cmd,
+						  struct invreq *ir,
+						  const struct tlv_invoice *first)
+{
+	u32 first_offset = 0;
+
+	if (!ir->invreq->offer_recurrence_base)
+		return NULL;
+
+	/* BOLT-recurrence #12:
+	 * - if `offer_recurrence_base` is present:
+	 *   - MUST set `period_offset` to the same value on all following
+	 *     requests.
+	 */
+	if (first->invreq_recurrence_start)
+		first_offset = *first->invreq_recurrence_start;
+	if (!ir->invreq->invreq_recurrence_start
+	    || *ir->invreq->invreq_recurrence_start != first_offset) {
+		return fail_invreq(cmd, ir, "period_offset changed");
+	}
+	return NULL;
+}
+
 /* Now, we need to check the previous invoice was paid, and maybe get timebase */
+static struct command_result *lookup_first_invoice(struct command *cmd,
+						   struct invreq *ir);
+
 static struct command_result *check_previous_invoice(struct command *cmd,
 						     struct invreq *ir)
 {
@@ -688,6 +728,12 @@ static struct command_result *check_previous_invoice(struct command *cmd,
 		return check_period(cmd, ir, *ir->inv->invoice_created_at);
 	}
 
+	/* period_offset sticks to the counter-0 invoice.  Counter 1 checks
+	 * that invoice as its previous; later counters look it up first. */
+	if (*ir->invreq->invreq_recurrence_counter > 1
+	    && ir->invreq->offer_recurrence_base)
+		return lookup_first_invoice(cmd, ir);
+
 	req = jsonrpc_request_start(cmd,
 				    "listinvoices",
 				    prev_invoice_done,
@@ -697,6 +743,65 @@ static struct command_result *check_previous_invoice(struct command *cmd,
 		       &ir->offer_id,
 		       ir->invreq->invreq_payer_id,
 		       *ir->invreq->invreq_recurrence_counter - 1);
+	return send_outreq(req);
+}
+
+static struct command_result *first_invoice_done(struct command *cmd,
+						 const char *method,
+						 const char *buf,
+						 const jsmntok_t *result,
+						 struct invreq *ir)
+{
+	const jsmntok_t *arr, *b12;
+	struct tlv_invoice *first;
+	const char *fail;
+	struct command_result *err;
+	struct out_req *req;
+
+	arr = json_get_member(buf, result, "invoices");
+	if (arr->size == 0)
+		return fail_invreq(cmd, ir, "No invoice #0");
+
+	b12 = json_get_member(buf, arr + 1, "bolt12");
+	if (!b12)
+		return fail_internalerr(cmd, ir, "Invoice #0 no bolt12");
+
+	first = invoice_decode(tmpctx, buf + b12->start, b12->end - b12->start,
+			       plugin_feature_set(cmd->plugin),
+			       chainparams, &fail);
+	if (!first)
+		return fail_internalerr(cmd, ir, "Invoice #0 can't decode");
+
+	err = check_period_offset(cmd, ir, first);
+	if (err)
+		return err;
+
+	req = jsonrpc_request_start(cmd,
+				    "listinvoices",
+				    prev_invoice_done,
+				    error,
+				    ir);
+	json_add_label(req->js,
+		       &ir->offer_id,
+		       ir->invreq->invreq_payer_id,
+		       *ir->invreq->invreq_recurrence_counter - 1);
+	return send_outreq(req);
+}
+
+static struct command_result *lookup_first_invoice(struct command *cmd,
+						   struct invreq *ir)
+{
+	struct out_req *req;
+
+	req = jsonrpc_request_start(cmd,
+				    "listinvoices",
+				    first_invoice_done,
+				    error,
+				    ir);
+	json_add_label(req->js,
+		       &ir->offer_id,
+		       ir->invreq->invreq_payer_id,
+		       0);
 	return send_outreq(req);
 }
 
