@@ -1086,6 +1086,9 @@ int main(int argc, char *argv[])
 		} else {
 			must_not_have(invoice, invreq_recurrence_start);
 		}
+		if (invoice->invreq_recurrence_prev_state)
+			print_hex("invreq_recurrence_prev_state",
+					       invoice->invreq_recurrence_prev_state);
 		if (invoice->invoice_recurrence_next_state)
 			print_hex("invoice_recurrence_next_state",
 					       invoice->invoice_recurrence_next_state);

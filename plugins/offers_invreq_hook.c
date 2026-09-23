@@ -1,6 +1,7 @@
 #include "config.h"
 #include <bitcoin/preimage.h>
 #include <ccan/cast/cast.h>
+#include <ccan/mem/mem.h>
 #include <ccan/tal/str/str.h>
 #include <common/bech32_util.h>
 #include <common/bolt12.h>
@@ -593,6 +594,16 @@ static struct command_result *check_period(struct command *cmd,
 	return add_blindedpaths(cmd, ir);
 }
 
+/* NULL and NULL match; otherwise the blobs must be identical. */
+static bool recurrence_state_matches(const u8 *prev, const u8 *next)
+{
+	if (!prev && !next)
+		return true;
+	if (!prev || !next)
+		return false;
+	return memeq(prev, tal_bytelen(prev), next, tal_bytelen(next));
+}
+
 static struct command_result *prev_invoice_done(struct command *cmd,
 						const char *method,
 						const char *buf,
@@ -644,6 +655,21 @@ static struct command_result *prev_invoice_done(struct command *cmd,
 			   "Previous invoice %.*s no recurrence_basetime?",
 			   json_tok_full_len(b12), json_tok_full(buf, b12));
 	}
+
+	/* BOLT-recurrence #12:
+	 * - if `offer_recurrence_optional` or `offer_recurrence_compulsory`
+	 *   are present:
+	 *   - SHOULD reject the invoice request if
+	 *     `invreq_recurrence_prev_state` is not identical to (or
+	 *     identically missing) the `invoice_recurrence_next_state` of
+	 *     the highest-paid invoice.
+	 */
+	if (!recurrence_state_matches(ir->invreq->invreq_recurrence_prev_state,
+				      previnv->invoice_recurrence_next_state)) {
+		return fail_invreq(cmd, ir,
+				   "recurrence_prev_state mismatch");
+	}
+
 	return check_period(cmd, ir, *previnv->invoice_recurrence_basetime);
 }
 
@@ -653,9 +679,14 @@ static struct command_result *check_previous_invoice(struct command *cmd,
 {
 	struct out_req *req;
 
-	/* No previous?  Just pass through */
-	if (*ir->invreq->invreq_recurrence_counter == 0)
+	/* No previous?  Just pass through.  Counter 0 must not carry
+	 * prev_state: there is no highest-paid invoice to echo. */
+	if (*ir->invreq->invreq_recurrence_counter == 0) {
+		if (ir->invreq->invreq_recurrence_prev_state)
+			return fail_invreq(cmd, ir,
+					   "recurrence_prev_state on counter 0");
 		return check_period(cmd, ir, *ir->inv->invoice_created_at);
+	}
 
 	req = jsonrpc_request_start(cmd,
 				    "listinvoices",
