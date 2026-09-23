@@ -522,9 +522,30 @@ struct command_result *json_offer(struct command *cmd,
 						     buffer, params,
 						     "incompatible with recurrence_base");
 		}
-		/* Move compulsory to optional */
+		if (!offer->offer_recurrence_compulsory)
+			return command_fail_badparam(cmd, "optional_recurrence",
+						     buffer, params,
+						     "needs recurrence");
+		/* Move compulsory to optional.  Never set both: a reader
+		 * must not silently prefer one variant. */
 		offer->offer_recurrence_optional = offer->offer_recurrence_compulsory;
 		offer->offer_recurrence_compulsory = NULL;
+	}
+
+	/* BOLT-recurrence #12:
+	 * - MUST NOT set `period` to 0.
+	 * - MUST NOT set `max_period_index` to 0.
+	 */
+	if (offer_recurrence(offer)) {
+		if (offer_recurrence(offer)->period == 0)
+			return command_fail_badparam(cmd, "recurrence",
+						     buffer, params,
+						     "period must be non-zero");
+		if (offer->offer_recurrence_limit
+		    && *offer->offer_recurrence_limit == 0)
+			return command_fail_badparam(cmd, "recurrence_limit",
+						     buffer, params,
+						     "must be non-zero");
 	}
 
 	if (command_check_only(cmd))

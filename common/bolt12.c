@@ -279,6 +279,16 @@ struct tlv_offer *offer_decode(const tal_t *ctx,
 	 *     - if `offer_recurrence_limit` is set and `max_period_index` is 0:
 	 *        - MUST NOT respond to the offer.
 	 */
+	/* BOLT-recurrence #12:
+	 * - if an offer MAY trigger time-spaced invoice requests:
+	 *   - MUST include exactly one of `offer_recurrence_optional` or
+	 *     `offer_recurrence_compulsory`.
+	 */
+	if (offer->offer_recurrence_compulsory && offer->offer_recurrence_optional) {
+		*fail = tal_strdup(ctx, "Offer contains both recurrence variants");
+		return tal_free(offer);
+	}
+
 	recurr = offer_recurrence(offer);
 	if (recurr) {
 		if (recurr->time_unit != 0
