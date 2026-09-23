@@ -1522,6 +1522,13 @@
                 "When we're requesting to start an invoice at a non-zero period."
               ]
             },
+            "invreq_recurrence_prev_state": {
+              "type": "hex",
+              "added": "v26.09",
+              "description": [
+                "Opaque state the previous invoice asked us to echo."
+              ]
+            },
             "invoice_paths": {
               "type": "array",
               "description": [

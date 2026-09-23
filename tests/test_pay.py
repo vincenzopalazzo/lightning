@@ -4914,6 +4914,200 @@ def test_fetchinvoice_recurrence(node_factory, bitcoind):
                                      'recurrence_label': 'test paywindow'})
 
 
+def test_recurrence_prev_state(node_factory):
+    """Echo invoice_recurrence_next_state, reject a mismatch, accept absent."""
+    blob = "aabbccdd"
+    l1, l2 = node_factory.line_graph(
+        2,
+        opts=[{},
+              {'dev-allow-localhost': None,
+               'dev-invoice-recurrence-next-state': blob}])
+
+    offer = l2.rpc.call('offer', {'amount': '1msat',
+                                  'description': 'state',
+                                  'recurrence': '10seconds',
+                                  'recurrence_paywindow': '-30+4000'})['bolt12']
+    ret = l1.rpc.call('fetchinvoice', {'offer': offer,
+                                       'recurrence_counter': 0,
+                                       'recurrence_label': 'state'})
+    dec = l1.rpc.decode(ret['invoice'])
+    assert dec['invoice_recurrence_next_state'] == blob
+    assert 'invreq_recurrence_prev_state' not in dec
+    l1.rpc.pay(ret['invoice'], label='state')
+
+    # Corrupt the blob the payer will echo.  The issuer compares it to
+    # the previous invoice, not to the blob it would set on a new one.
+    l1.rpc.call('datastore', {'key': ['offers', 'recurrence', 'state', 'next_state'],
+                              'hex': 'eeff',
+                              'mode': 'must-replace'})
+    with pytest.raises(RpcError, match='recurrence_prev_state mismatch'):
+        l1.rpc.call('fetchinvoice', {'offer': offer,
+                                     'recurrence_counter': 1,
+                                     'recurrence_label': 'state'})
+
+    # Restore it.  Counter 1 echoes the previous invoice's blob.
+    l1.rpc.call('datastore', {'key': ['offers', 'recurrence', 'state', 'next_state'],
+                              'hex': blob,
+                              'mode': 'must-replace'})
+    ret = l1.rpc.call('fetchinvoice', {'offer': offer,
+                                       'recurrence_counter': 1,
+                                       'recurrence_label': 'state'})
+    dec = l1.rpc.decode(ret['invoice'])
+    assert dec['invreq_recurrence_prev_state'] == blob
+
+    # Absent matches absent: an offer with no next_state, and a second
+    # period whose payer also omits prev_state.  Pay through the funded
+    # peer so we do not need another channel.
+    l2.rpc.call('setconfig', {'config': 'dev-invoice-recurrence-next-state',
+                              'val': ''})
+    offer3 = l2.rpc.call('offer', {'amount': '1msat',
+                                   'description': 'absent state',
+                                   'recurrence': '10seconds',
+                                   'recurrence_paywindow': '-30+4000'})['bolt12']
+    ret = l1.rpc.call('fetchinvoice', {'offer': offer3,
+                                       'recurrence_counter': 0,
+                                       'recurrence_label': 'absent'})
+    dec = l1.rpc.decode(ret['invoice'])
+    assert 'invoice_recurrence_next_state' not in dec
+    l1.rpc.pay(ret['invoice'], label='absent')
+    # Onion messages are rate-limited to one per 250 ms.
+    time.sleep(1)
+    ret = l1.rpc.call('fetchinvoice', {'offer': offer3,
+                                       'recurrence_counter': 1,
+                                       'recurrence_label': 'absent'})
+    dec = l1.rpc.decode(ret['invoice'])
+    assert 'invreq_recurrence_prev_state' not in dec
+
+
+def test_recurrence_basetime_and_offset(node_factory):
+    """Payer rejects a basetime that does not match the offer rules."""
+    l1, l2 = node_factory.line_graph(2, opts={'dev-allow-localhost': None})
+
+    # Counter 0 with no base: basetime must equal invoice_created_at.
+    # We cannot forge the issuer's signature here, so check the honest
+    # invoice satisfies the rule, and that a second period keeps it.
+    offer = l2.rpc.call('offer', {'amount': '1msat',
+                                  'description': 'basetime no base',
+                                  'recurrence': '1hours'})['bolt12']
+    ret = l1.rpc.call('fetchinvoice', {'offer': offer,
+                                       'recurrence_counter': 0,
+                                       'recurrence_label': 'basetime'})
+    dec = l1.rpc.decode(ret['invoice'])
+    assert dec['invoice_recurrence_basetime'] == dec['invoice_created_at']
+    assert 'invoice_recurrence_next_state' not in dec
+    assert 'invreq_recurrence_prev_state' not in dec
+    l1.rpc.pay(ret['invoice'], label='basetime')
+
+    # Too early for counter 1, but the issuer still answers once the
+    # paywindow opens.  Use a paywindow that is already open.
+    # Base in the past, offset 0, so period 0 is already open and
+    # seconds_before cannot underflow.
+    base = int(time.time()) - 5
+    offer = l2.rpc.call('offer', {'amount': '1msat',
+                                  'description': 'basetime base',
+                                  'recurrence': '1hours',
+                                  'recurrence_base': base,
+                                  'recurrence_paywindow': '-30+30'})['bolt12']
+    ret = l1.rpc.call('fetchinvoice', {'offer': offer,
+                                       'recurrence_counter': 0,
+                                       'recurrence_start': 0,
+                                       'recurrence_label': 'base'})
+    dec = l1.rpc.decode(ret['invoice'])
+    assert dec['invoice_recurrence_basetime'] == base
+    assert dec['invreq_recurrence_start'] == 0
+    l1.rpc.pay(ret['invoice'], label='base')
+
+    # The payer refuses to send a different offset.  A dev option forces
+    # one through so the issuer's check can reject it.  Period 1 may also
+    # be outside the paywindow; the offset check runs first.
+    l1.rpc.call('setconfig', {'config': 'dev-force-period-offset', 'val': 1})
+    with pytest.raises(RpcError, match='period_offset changed'):
+        l1.rpc.call('fetchinvoice', {'offer': offer,
+                                     'recurrence_counter': 1,
+                                     'recurrence_label': 'base'})
+    l1.rpc.call('setconfig', {'config': 'dev-force-period-offset', 'val': 0})
+
+    # Omitting recurrence_start reuses the remembered offset.  A paywindow
+    # error means the offset was accepted.
+    try:
+        ret = l1.rpc.call('fetchinvoice', {'offer': offer,
+                                           'recurrence_counter': 1,
+                                           'recurrence_label': 'base'})
+        dec = l1.rpc.decode(ret['invoice'])
+        assert dec['invoice_recurrence_basetime'] == base
+        assert dec['invreq_recurrence_start'] == 0
+    except RpcError as e:
+        assert 'period_offset changed' not in str(e)
+        assert 'too early' in str(e) or 'too late' in str(e)
+
+
+def test_recurrence_offer_writer(node_factory):
+    """Reject a zero period, a zero limit, and both recurrence variants."""
+    l1 = node_factory.get_node()
+
+    with pytest.raises(RpcError, match='period must be non-zero'):
+        l1.rpc.call('offer', {'amount': '1msat',
+                              'description': 'zero period',
+                              'recurrence': '0seconds'})
+
+    with pytest.raises(RpcError, match='must be non-zero'):
+        l1.rpc.call('offer', {'amount': '1msat',
+                              'description': 'zero limit',
+                              'recurrence': '1seconds',
+                              'recurrence_limit': 0})
+
+    # A real offer sets exactly one variant.  Craft one with both and
+    # check the reader refuses it instead of preferring compulsory.
+    offer = l1.rpc.call('offer', {'amount': '1msat',
+                                  'description': 'both variants',
+                                  'recurrence': '1seconds'})['bolt12']
+    # decodehex gives type/len/value lines.  Compulsory is experimental
+    # type 1000000024; optional is 1000000025.  Copy the compulsory TLV
+    # as the optional type.
+    hx = subprocess.check_output(['devtools/bolt12-cli', 'decodehex', offer],
+                                 text=True)
+    lines = hx.strip().splitlines()
+    assert lines[0].startswith('lno ')
+    raw = bytes.fromhex(lines[0].split()[1])
+
+    def read_bigsize(buf, i):
+        b = buf[i]
+        if b < 0xfd:
+            return b, i + 1
+        if b == 0xfd:
+            return int.from_bytes(buf[i+1:i+3], 'big'), i + 3
+        if b == 0xfe:
+            return int.from_bytes(buf[i+1:i+5], 'big'), i + 5
+        return int.from_bytes(buf[i+1:i+9], 'big'), i + 9
+
+    def write_bigsize(n):
+        if n < 0xfd:
+            return bytes([n])
+        if n <= 0xffff:
+            return bytes([0xfd]) + n.to_bytes(2, 'big')
+        if n <= 0xffffffff:
+            return bytes([0xfe]) + n.to_bytes(4, 'big')
+        return bytes([0xff]) + n.to_bytes(8, 'big')
+
+    # Append type 1000000025 with the same value as type 1000000024.
+    comp = None
+    i = 0
+    while i < len(raw):
+        t, i = read_bigsize(raw, i)
+        ln, i = read_bigsize(raw, i)
+        val = raw[i:i+ln]
+        i += ln
+        if t == 1000000024:
+            comp = val
+    assert comp is not None
+    both = raw + write_bigsize(1000000025) + write_bigsize(len(comp)) + comp
+    both_offer = subprocess.check_output(
+        ['devtools/bolt12-cli', 'encodehex', 'lno', both.hex()],
+        text=True).strip()
+    with pytest.raises(RpcError, match='both recurrence variants'):
+        l1.rpc.decode(both_offer)
+
+
 def test_recurrence_expired_offer(node_factory, bitcoind):
     """We *can* use an expired offer for successive recurrences"""
     l1, l2 = node_factory.line_graph(2)

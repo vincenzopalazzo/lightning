@@ -1174,6 +1174,13 @@ static struct command_result *got_period_offset(struct command *cmd,
 	if (!b->invreq->invreq_recurrence_start)
 		b->invreq->invreq_recurrence_start = tal(b->invreq, u32);
 	*b->invreq->invreq_recurrence_start = offset;
+	/* Test hook: send a different offset so the issuer can reject it. */
+	{
+		const struct offers_data *od = get_offers_data(cmd->plugin);
+
+		if (od->dev_force_period_offset)
+			*b->invreq->invreq_recurrence_start = od->dev_force_period_offset;
+	}
 	return load_series_basetime(cmd, b);
 }
 

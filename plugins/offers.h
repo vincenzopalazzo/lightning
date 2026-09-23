@@ -31,6 +31,10 @@ struct offers_data {
 	struct short_channel_id *dev_invoice_internal_scid;
 	/* --dev-currency-expiry: max invoice expiry for currency offers (default 600) */
 	u32 dev_currency_expiry;
+	/* --dev-invoice-recurrence-next-state: hex blob to set, or empty to omit. */
+	char *dev_invoice_recurrence_next_state;
+	/* --dev-force-period-offset: if set, payer sends this instead of the saved one. */
+	u32 dev_force_period_offset;
 	/* Use get_gossmap() to access this! */
 	struct gossmap *global_gossmap_;
 };

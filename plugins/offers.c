@@ -2003,6 +2003,18 @@ static bool scid_jsonfmt(struct command *cmd, struct json_stream *js, const char
 	return true;
 }
 
+static char *dev_next_state_option(struct command *cmd, const char *arg,
+				   bool check_only, char **p)
+{
+	char *err = charp_option(cmd, arg, check_only, p);
+
+	/* charp_option parents the string off NULL.  It lives for the
+	 * process; the leak checker must ignore it. */
+	if (!err && !check_only && *p)
+		notleak(*p);
+	return err;
+}
+
 int main(int argc, char *argv[])
 {
 	setup_locale();
@@ -2012,6 +2024,8 @@ int main(int argc, char *argv[])
 	od->dev_invoice_bpath_scid = false;
 	od->dev_invoice_internal_scid = NULL;
 	od->dev_currency_expiry = 600;
+	od->dev_invoice_recurrence_next_state = NULL;
+	od->dev_force_period_offset = 0;
 	od->global_gossmap_ = NULL;
 
 	/* We deal in UTC; mktime() uses local time */
@@ -2033,5 +2047,13 @@ int main(int argc, char *argv[])
 		    plugin_option_dev_dynamic("dev-currency-expiry", "int",
 					      "Max invoice expiry (seconds) for currency-denominated recurring offers",
 					      u32_option, u32_jsonfmt, &od->dev_currency_expiry),
+		    plugin_option_dev_dynamic("dev-invoice-recurrence-next-state", "string",
+				      "Hex blob to set as invoice_recurrence_next_state (empty omits it)",
+				      dev_next_state_option, charp_jsonfmt,
+				      &od->dev_invoice_recurrence_next_state),
+		    plugin_option_dev_dynamic("dev-force-period-offset", "int",
+				      "Override invreq period_offset after loading the saved one",
+				      u32_option, u32_jsonfmt,
+				      &od->dev_force_period_offset),
 		    NULL);
 }

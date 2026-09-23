@@ -2,6 +2,8 @@
 #include <bitcoin/preimage.h>
 #include <ccan/cast/cast.h>
 #include <ccan/mem/mem.h>
+#include <ccan/str/hex/hex.h>
+#include <ccan/str/str.h>
 #include <ccan/tal/str/str.h>
 #include <common/bech32_util.h>
 #include <common/bolt12.h>
@@ -463,6 +465,8 @@ static struct command_result *cancel_invoice(struct command *cmd,
 	return create_invoicereq(cmd, ir);
 }
 
+static const u8 *od_next_state(struct command *cmd);
+
 static struct command_result *check_period(struct command *cmd,
 					   struct invreq *ir,
 					   u64 basetime)
@@ -587,11 +591,45 @@ static struct command_result *check_period(struct command *cmd,
 		}
 	}
 
+	/* BOLT-recurrence #12:
+	 * - MUST set or not set `invoice_recurrence_next_state` to the
+	 *   expected `invreq_recurrence_prev_state` for the next invoice
+	 *   request.
+	 *
+	 * We are stateful and do not invent a blob.  A dev option lets tests
+	 * set one; otherwise we omit it, and still accept a peer that sets it.
+	 */
+	if (od_next_state(cmd)) {
+		ir->inv->invoice_recurrence_next_state
+			= tal_dup_talarr(ir->inv, u8, od_next_state(cmd));
+	}
+
 	/* If this is actually a cancel, we create an expired invoice */
 	if (ir->invreq->invreq_recurrence_cancel)
 		return cancel_invoice(cmd, ir);
 
 	return add_blindedpaths(cmd, ir);
+}
+
+static const u8 *od_next_state(struct command *cmd)
+{
+	const struct offers_data *od = get_offers_data(cmd->plugin);
+	size_t hexlen;
+
+	if (!od->dev_invoice_recurrence_next_state
+	    || streq(od->dev_invoice_recurrence_next_state, ""))
+		return NULL;
+	hexlen = strlen(od->dev_invoice_recurrence_next_state);
+	if (hexlen % 2)
+		return NULL;
+	{
+		u8 *blob = tal_arr(tmpctx, u8, hexlen / 2);
+
+		if (!hex_decode(od->dev_invoice_recurrence_next_state, hexlen,
+				blob, hexlen / 2))
+			return tal_free(blob);
+		return blob;
+	}
 }
 
 /* NULL and NULL match; otherwise the blobs must be identical. */
