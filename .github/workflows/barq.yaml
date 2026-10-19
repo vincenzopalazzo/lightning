@@ -86,6 +86,10 @@ jobs:
         with:
           repository: ${{ env.CLN_REPO }}
           ref: ${{ env.CLN_REF }}
+          # The version lightningd reports comes from `git describe`. barq
+          # registers its `pay` hook only on versions it can read, and a
+          # tagless checkout reports a bare commit hash.
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
@@ -103,6 +107,7 @@ jobs:
           VALGRIND: 0
           RUSTC_WRAPPER: sccache
         run: |
+          git describe --tags --always --abbrev=7
           ./configure --enable-debugbuild CC="sccache gcc"
           uv run make -j "$(nproc)" testpack.tar.gz
       - uses: actions/upload-artifact@v7
