@@ -180,6 +180,9 @@ jobs:
           tar xaf testpack.tar.gz
           chmod +x barq/barq-plugin
       - name: Test
+        # With barq some tests fail by design (barq's expected-failures.txt):
+        # the compare job decides. A native failure still fails the run.
+        continue-on-error: ${{ matrix.mode == 'barq' }}
         env:
           COMPAT: 1
           SLOW_MACHINE: 1
