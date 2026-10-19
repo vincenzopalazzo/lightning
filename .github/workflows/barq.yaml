@@ -1,0 +1,217 @@
+# Core Lightning's own integration tests, run twice on the same build: once
+# as is, and once with barq (https://github.com/coffee-tools/barq) serving
+# `pay` on every node (TEST_BARQ_PLUGIN, see tests/fixtures.py). A test that
+# passes natively and fails with barq is a place where barq is not a drop-in
+# replacement for `pay`. The compare job lists them in the run summary and
+# fails when one is not in barq's tests/cln/expected-failures.txt.
+#
+# barq's own CI calls this workflow (workflow_call) for every barq pull
+# request, with barq_ref set to the pull request's head.
+name: barq pay compatibility
+
+on:
+  push:
+    branches: [barq-pay-tests]
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_call:
+    inputs:
+      barq_repo:
+        type: string
+        default: coffee-tools/barq
+      barq_ref:
+        type: string
+        default: main
+      tests:
+        type: string
+        default: tests/test_pay.py tests/test_xpay.py tests/test_invoices.py
+      groups:
+        type: string
+        default: '4'
+      cln_repo:
+        description: the Core Lightning tree carrying the TEST_BARQ_PLUGIN hook
+        type: string
+        default: vincenzopalazzo/lightning
+      cln_ref:
+        type: string
+        default: barq-pay-tests
+  workflow_dispatch:
+    inputs:
+      barq_repo:
+        description: barq repository
+        default: coffee-tools/barq
+      barq_ref:
+        description: barq branch, tag or commit
+        default: claude/cln-test-suite
+      tests:
+        description: test files (tests/ runs the whole suite)
+        default: tests/test_pay.py tests/test_xpay.py tests/test_invoices.py
+      groups:
+        description: number of parallel test groups per mode
+        default: '4'
+
+concurrency:
+  group: barq-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BARQ_REPO: ${{ inputs.barq_repo || 'coffee-tools/barq' }}
+  BARQ_REF: ${{ inputs.barq_ref || 'claude/cln-test-suite' }}
+  TESTS: ${{ inputs.tests || 'tests/test_pay.py tests/test_xpay.py tests/test_invoices.py' }}
+  # Called from barq, github.repository is barq: check out this tree instead.
+  CLN_REPO: ${{ inputs.cln_repo || github.repository }}
+  CLN_REF: ${{ inputs.cln_ref || github.sha }}
+  RUST_PROFILE: small
+  TEST_LOG_IGNORE_ERRORS: "1"
+
+jobs:
+  groups:
+    runs-on: ubuntu-24.04
+    outputs:
+      groups: ${{ steps.groups.outputs.groups }}
+      count: ${{ steps.groups.outputs.count }}
+    steps:
+      - id: groups
+        run: |
+          n=${{ inputs.groups || '4' }}
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          echo "groups=$(seq -s, 1 $n | sed 's/^/[/;s/$/]/')" >> "$GITHUB_OUTPUT"
+
+  compile:
+    name: Build Core Lightning
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ env.CLN_REPO }}
+          ref: ${{ env.CLN_REF }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: actions/cache@v5
+        with:
+          path: ~/ci-cache
+          key: apt-${{ runner.os }}
+      - name: Install dependencies
+        run: bash -x .github/scripts/setup.sh
+      - uses: mozilla-actions/sccache-action@v0.0.10
+      - name: Build
+        env:
+          COMPAT: 1
+          VALGRIND: 0
+          RUSTC_WRAPPER: sccache
+        run: |
+          ./configure --enable-debugbuild CC="sccache gcc"
+          uv run make -j "$(nproc)" testpack.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cln-testpack
+          path: testpack.tar.gz
+
+  barq:
+    name: Build barq
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ env.BARQ_REPO }}
+          ref: ${{ env.BARQ_REF }}
+          path: barq
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: barq
+      - name: Build
+        working-directory: barq
+        # rustup picks the toolchain pinned in barq's rust-toolchain file.
+        run: |
+          cargo build --release -p barq-plugin
+          mkdir -p ../out && cp target/release/barq-plugin ../out/
+          cp -r tests/cln ../out/cln
+          git rev-parse HEAD > ../out/commit
+      - uses: actions/upload-artifact@v7
+        with:
+          name: barq
+          path: out
+
+  test:
+    name: ${{ matrix.mode }} ${{ matrix.group }}/${{ needs.groups.outputs.count }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    needs: [groups, compile, barq]
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native, barq]
+        group: ${{ fromJSON(needs.groups.outputs.groups) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ env.CLN_REPO }}
+          ref: ${{ env.CLN_REF }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: actions/cache@v5
+        with:
+          path: ~/ci-cache
+          key: apt-${{ runner.os }}
+      - name: Install dependencies
+        run: bash -x .github/scripts/setup.sh
+      - uses: actions/download-artifact@v8
+        with:
+          name: cln-testpack
+      - uses: actions/download-artifact@v8
+        with:
+          name: barq
+          path: barq
+      - name: Unpack
+        run: |
+          git submodule sync && git submodule update --init --recursive
+          find . -type f -not -path './barq/*' -print0 | xargs -0 touch -d yesterday
+          tar xaf testpack.tar.gz
+          chmod +x barq/barq-plugin
+      - name: Test
+        env:
+          COMPAT: 1
+          SLOW_MACHINE: 1
+          TEST_DEBUG: 0
+          VALGRIND: 0
+          TEST_DB_PROVIDER: sqlite3
+          TEST_NETWORK: regtest
+        run: |
+          [ "${{ matrix.mode }}" = barq ] && export TEST_BARQ_PLUGIN=$PWD/barq/barq-plugin
+          echo "barq $(cat barq/commit), TEST_BARQ_PLUGIN=${TEST_BARQ_PLUGIN:-unset}"
+          uv run eatmydata pytest $TESTS -n $(($(nproc) + 1)) -vvv \
+            --junit-xml=report-${{ matrix.mode }}-${{ matrix.group }}.xml --timeout=1800 --durations=10 \
+            --test-group=${{ matrix.group }} --test-group-count=${{ needs.groups.outputs.count }} \
+            --test-group-random-seed=42
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: report-${{ matrix.mode }}-${{ matrix.group }}
+          path: report-*.xml
+          if-no-files-found: ignore
+
+  compare:
+    name: barq vs native
+    runs-on: ubuntu-24.04
+    needs: test
+    if: always()
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: barq
+          path: barq
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: report-*
+          merge-multiple: true
+      - name: Compare
+        run: |
+          echo "barq ${{ env.BARQ_REPO }}@$(cat barq/commit), tests: $TESTS" >> "$GITHUB_STEP_SUMMARY"
+          python3 barq/cln/compare_junit.py --native report-native-*.xml --barq report-barq-*.xml \
+            --expected barq/cln/expected-failures.txt --markdown "$GITHUB_STEP_SUMMARY"
